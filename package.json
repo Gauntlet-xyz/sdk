@@ -1,0 +1,64 @@
+{
+  "name": "@gauntlet-xyz/sdk",
+  "version": "1.0.1",
+  "description": "Official Gauntlet SDK for vault deposits, withdrawals, and attribution",
+  "license": "MIT",
+  "keywords": [
+    "gauntlet",
+    "defi",
+    "vault",
+    "aera",
+    "evm",
+    "viem",
+    "deposit",
+    "withdraw",
+    "sdk"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./evm": {
+      "types": "./dist/evm/index.d.ts",
+      "import": "./dist/evm/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "manifest"
+  ],
+  "scripts": {
+    "build": "tsc --project tsconfig.json",
+    "dev": "tsc --project tsconfig.json --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint --ext=tsx,ts,js src && echo-cli '✔ No ESLint warnings or errors'",
+    "format": "eslint --fix --quiet --ext=tsx,ts,js src && echo-cli '✔ No ESLint warnings or errors'",
+    "typecheck": "npx tsc --noEmit",
+    "clean": "rm -rf dist .turbo"
+  },
+  "peerDependencies": {
+    "viem": ">=2.0.0"
+  },
+  "devDependencies": {
+    "@next/eslint-plugin-next": "13.1.1",
+    "@types/node": "^18.15.11",
+    "@viem/anvil": "^0.0.10",
+    "echo-cli": "^2.0.0",
+    "eslint": "^8.57.0",
+    "typescript": "^5.5.4",
+    "viem": "2.30.1",
+    "vitest": "^4.1.2"
+  },
+  "packageManager": "yarn@4.3.1"
+}

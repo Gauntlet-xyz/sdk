@@ -1,0 +1,596 @@
+{
+  "version": "2026-04-13",
+  "vaults": [
+    {
+      "vaultId": "baseUsdcPrime",
+      "name": "Gauntlet USDC Prime",
+      "protocol": "morpho",
+      "strategy": "Prime Lending",
+      "deployments": [
+        {
+          "chain": "evm",
+          "chainId": 8453,
+          "vaultAddress": "0xeE8F4eC5672F09119b96Ab6fB59C27E1b7e44b61",
+          "vaultType": "single-depositor",
+          "depositMode": "sync",
+          "supplyToken": [
+            {
+              "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+              "symbol": "USDC",
+              "decimals": 6
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "vaultId": "ethUsdcPrime",
+      "name": "Gauntlet USDC Prime",
+      "protocol": "morpho",
+      "strategy": "Prime Lending",
+      "deployments": [
+        {
+          "chain": "evm",
+          "chainId": 1,
+          "vaultAddress": "0xdd0f28e19C1780eb6396170735D45153D261490d",
+          "vaultType": "single-depositor",
+          "depositMode": "sync",
+          "supplyToken": [
+            {
+              "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+              "symbol": "USDC",
+              "decimals": 6
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "vaultId": "gtusda",
+      "name": "Gauntlet USD Alpha",
+      "protocol": "aera",
+      "strategy": "Multi-strategy Stablecoin Yield",
+      "deployments": [
+        {
+          "chain": "evm",
+          "chainId": 8453,
+          "vaultAddress": "0x000000000001CdB57E58Fa75Fe420a0f4D6640D5",
+          "provisionerAddress": "0x18CF8d963E1a727F9bbF3AEffa0Bd04FB4dBdA07",
+          "vaultType": "multi-depositor",
+          "depositMode": "async",
+          "supplyToken": [
+            {
+              "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+              "symbol": "USDC",
+              "decimals": 6
+            }
+          ]
+        },
+        {
+          "chain": "evm",
+          "chainId": 1,
+          "vaultAddress": "0x3bd9248048df95db4fbd748c6cd99c1baa40bad0",
+          "provisionerAddress": "0x74C4A66CE4F4779B11E7c63D42e51EEef3A80D11",
+          "vaultType": "multi-depositor",
+          "depositMode": "async",
+          "supplyToken": [
+            {
+              "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+              "symbol": "USDC",
+              "decimals": 6
+            }
+          ]
+        },
+        {
+          "chain": "evm",
+          "chainId": 42161,
+          "vaultAddress": "0x000000001DC8bd45d7E7829fb1c969cbe4D0D1eC",
+          "provisionerAddress": "0xDd4a42603E6d8E515C3468789375A98c376821b3",
+          "vaultType": "multi-depositor",
+          "depositMode": "async",
+          "supplyToken": [
+            {
+              "address": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+              "symbol": "USDC",
+              "decimals": 6
+            }
+          ]
+        },
+        {
+          "chain": "evm",
+          "chainId": 10,
+          "vaultAddress": "0x000000001DC8bd45d7E7829fb1c969cbe4D0D1eC",
+          "provisionerAddress": "0xCC923371F0d3A9cA75d98E767Df9dE1cdf5799Ef",
+          "vaultType": "multi-depositor",
+          "depositMode": "async",
+          "supplyToken": [
+            {
+              "address": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+              "symbol": "USDC",
+              "decimals": 6
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "vaultId": "ethUsdcPrimeV2",
+      "name": "Gauntlet USDC Prime v2",
+      "protocol": "morpho",
+      "strategy": "Prime Lending v2",
+      "deployments": [
+        {
+          "chain": "evm",
+          "chainId": 1,
+          "vaultAddress": "0x8c106EEDAd96553e64287A5A6839c3Cc78afA3D0",
+          "vaultType": "single-depositor",
+          "depositMode": "sync",
+          "supplyToken": [
+            {
+              "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+              "symbol": "USDC",
+              "decimals": 6
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "vaultId": "stgusda",
+      "name": "Gauntlet USD Alpha Staging",
+      "protocol": "aera",
+      "strategy": "Multi-strategy Stablecoin Yield",
+      "deployments": [
+        {
+          "chain": "evm",
+          "chainId": 8453,
+          "vaultAddress": "0x0000000009efb912061c7d465b9ecd5215833365",
+          "provisionerAddress": "0xf065d74240Beb283398b5a5F62Fc645686Be643e",
+          "vaultType": "multi-depositor",
+          "depositMode": "async",
+          "supplyToken": [
+            {
+              "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+              "symbol": "USDC",
+              "decimals": 6
+            }
+          ]
+        },
+        {
+          "chain": "evm",
+          "chainId": 42161,
+          "vaultAddress": "0x3e9c9888a3ba0fbe9dc731d4afc9182f5706eaad",
+          "provisionerAddress": "0x694B729FEf80432A9aDf647145a33dCcD5C1e3Cb",
+          "vaultType": "multi-depositor",
+          "depositMode": "async",
+          "supplyToken": [
+            {
+              "address": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+              "symbol": "USDC",
+              "decimals": 6
+            }
+          ]
+        },
+        {
+          "chain": "evm",
+          "chainId": 10,
+          "vaultAddress": "0x3e9c9888a3ba0fbe9dc731d4afc9182f5706eaad",
+          "provisionerAddress": "0x27a43Ec68F635f49811e6889A4a56D7e0590a7B5",
+          "vaultType": "multi-depositor",
+          "depositMode": "async",
+          "supplyToken": [
+            {
+              "address": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+              "symbol": "USDC",
+              "decimals": 6
+            }
+          ]
+        },
+        {
+          "chain": "evm",
+          "chainId": 1,
+          "vaultAddress": "0x8acF95A9d58Ca51ED5f2825324419c92c440342b",
+          "provisionerAddress": "0x1a4e8B0bCf5F0f7fb4dC5F4b398f37b8097d0b36",
+          "vaultType": "multi-depositor",
+          "depositMode": "async",
+          "supplyToken": [
+            {
+              "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+              "symbol": "USDC",
+              "decimals": 6
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "vaultId": "devusda",
+      "name": "Gauntlet USD Alpha Dev",
+      "protocol": "aera",
+      "strategy": "Multi-strategy Stablecoin Yield",
+      "deployments": [
+        {
+          "chain": "evm",
+          "chainId": 8453,
+          "vaultAddress": "0x7c30d121176242EafDc77D307E804280AE5cFD6C",
+          "provisionerAddress": "0x1e4496577010a395ff8dc05395Ec4136E624DE7D",
+          "vaultType": "multi-depositor",
+          "depositMode": "async",
+          "supplyToken": [
+            {
+              "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+              "symbol": "USDC",
+              "decimals": 6
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "vaultId": "devusda2",
+      "name": "Gauntlet USD Alpha Dev Deux",
+      "protocol": "aera",
+      "strategy": "Multi-strategy Stablecoin Yield",
+      "deployments": [
+        {
+          "chain": "evm",
+          "chainId": 8453,
+          "vaultAddress": "0x70d974963f44Bb5CeA01378E83e55cced102EE82",
+          "provisionerAddress": "0x040bA994d84758f8F4AEDD93c7d26bAE0bAF81AA",
+          "vaultType": "multi-depositor",
+          "depositMode": "async",
+          "supplyToken": [
+            {
+              "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+              "symbol": "USDC",
+              "decimals": 6
+            }
+          ]
+        },
+        {
+          "chain": "evm",
+          "chainId": 1,
+          "vaultAddress": "0x419cdBaFa120Ad8CE5c9Daf662Bd56A36CE31533",
+          "provisionerAddress": "0x7eAeF7765Ab941b75e5aAD931541a6068f1dFc63",
+          "vaultType": "multi-depositor",
+          "depositMode": "async",
+          "supplyToken": [
+            {
+              "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+              "symbol": "USDC",
+              "decimals": 6
+            }
+          ]
+        },
+        {
+          "chain": "evm",
+          "chainId": 42161,
+          "vaultAddress": "0xA9c4D4669bf0775c1bBC949991Af6367541Fb5f99",
+          "provisionerAddress": "0xA49Ce85A52DB702857F32f53377DB1bB5d9aB5A7",
+          "vaultType": "multi-depositor",
+          "depositMode": "async",
+          "supplyToken": [
+            {
+              "address": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+              "symbol": "USDC",
+              "decimals": 6
+            }
+          ]
+        },
+        {
+          "chain": "evm",
+          "chainId": 10,
+          "vaultAddress": "0x2Ef9A1D3120647b114a7875372Be8FFDDfa6BB33",
+          "provisionerAddress": "0xd4736ff34F082a6640786ce13E384b54417F3c13",
+          "vaultType": "multi-depositor",
+          "depositMode": "async",
+          "supplyToken": [
+            {
+              "address": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+              "symbol": "USDC",
+              "decimals": 6
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "vaultId": "gpaafalconx",
+      "name": "Gauntlet Levered FalconX",
+      "protocol": "aera",
+      "strategy": "Levered FalconX USDC",
+      "deployments": [
+        {
+          "chain": "evm",
+          "chainId": 1,
+          "vaultAddress": "0x00000000d8f3d6c5DFeB2D2b5ED2276095f3aF44",
+          "provisionerAddress": "0x21994912f1D286995c4d4961303cBB8E44939944",
+          "vaultType": "multi-depositor",
+          "depositMode": "async",
+          "supplyToken": [
+            {
+              "address": "0xc26a6fa2c37b38e549a4a1807543801db684f99c",
+              "symbol": "AA_FalconXUSDC",
+              "decimals": 18
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "vaultId": "pytstg",
+      "name": "Gauntlet Levered FalconX Staging",
+      "protocol": "aera",
+      "strategy": "Levered FalconX USDC",
+      "deployments": [
+        {
+          "chain": "evm",
+          "chainId": 1,
+          "vaultAddress": "0x953Ca96b057D5397CE7791C5AE9b5a19b1352341",
+          "provisionerAddress": "0x01587FC1e3713cd797BD9131F64fB29558a4dd01",
+          "vaultType": "multi-depositor",
+          "depositMode": "async",
+          "supplyToken": [
+            {
+              "address": "0x99e05cdbeac5d91150935c59ff8e9ba9945d6884",
+              "symbol": "AA_GauntletTestUSDC",
+              "decimals": 18
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "vaultId": "gpsyrupusdc",
+      "name": "Gauntlet SyrupUSDC",
+      "protocol": "aera",
+      "strategy": "Levered Maple syrupUSDC",
+      "deployments": [
+        {
+          "chain": "evm",
+          "chainId": 1,
+          "vaultAddress": "0x00000000D283e5f8294e7E2dc06b55D43e060F49",
+          "provisionerAddress": "0xA582D1b9c74892100986b7f2913468FaF350ba41",
+          "vaultType": "multi-depositor",
+          "depositMode": "async",
+          "supplyToken": [
+            {
+              "address": "0x80ac24aa929eaf5013f6436cda2a7ba190f5cc0b",
+              "symbol": "syrupUSDC",
+              "decimals": 6
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "vaultId": "syruppytstg",
+      "name": "Gauntlet SyrupUSDC Staging",
+      "protocol": "aera",
+      "strategy": "Levered Maple syrupUSDC",
+      "deployments": [
+        {
+          "chain": "evm",
+          "chainId": 1,
+          "vaultAddress": "0x83c248E8C6C0C2F6C0Fe4E2b7B259a8AFCbA6Fab",
+          "provisionerAddress": "0x6178f27700786BC42abA6e58d61bb6d30eD7d9c1",
+          "vaultType": "multi-depositor",
+          "depositMode": "async",
+          "supplyToken": [
+            {
+              "address": "0x80ac24aa929eaf5013f6436cda2a7ba190f5cc0b",
+              "symbol": "syrupUSDC",
+              "decimals": 6
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "vaultId": "gtbtc",
+      "name": "Gauntlet BTC Yield",
+      "protocol": "aera",
+      "strategy": "BTC Carry Trade Yield",
+      "deployments": [
+        {
+          "chain": "evm",
+          "chainId": 1,
+          "vaultAddress": "0xefF0AE5b39271b33f448cD408b51DC8aA72a672b",
+          "provisionerAddress": "0xD580c26F7bD8A8a66fd32a97Df2308C083b65d9c",
+          "vaultType": "multi-depositor",
+          "depositMode": "async",
+          "supplyToken": [
+            {
+              "address": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+              "symbol": "cbBTC",
+              "decimals": 8
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "vaultId": "gtbtcstaging",
+      "name": "Gauntlet BTC Yield Staging",
+      "protocol": "aera",
+      "strategy": "BTC Carry Trade Yield",
+      "deployments": [
+        {
+          "chain": "evm",
+          "chainId": 1,
+          "vaultAddress": "0x05B011922348325E7C9Ece372560DF92eA699886",
+          "provisionerAddress": "0x1C522384920E87d6D6720cf067C931Bb6B84A5dC",
+          "vaultType": "multi-depositor",
+          "depositMode": "async",
+          "supplyToken": [
+            {
+              "address": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+              "symbol": "cbBTC",
+              "decimals": 8
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "vaultId": "gtusccstg",
+      "name": "Gauntlet Levered USCC Staging",
+      "protocol": "aera",
+      "strategy": "Levered Superstate USCC",
+      "deployments": [
+        {
+          "chain": "evm",
+          "chainId": 1,
+          "vaultAddress": "0xCA4DF15F1100bd643b719Dc496dF4A46Ce61e0E6",
+          "provisionerAddress": "0x35A2f80d1a53E7aCbE71cB9FD07722Ab0F1252D9",
+          "vaultType": "multi-depositor",
+          "depositMode": "async",
+          "supplyToken": [
+            {
+              "address": "0x14d60e7fdc0d71d8611742720e4c50e7a974020c",
+              "symbol": "USCC",
+              "decimals": 6
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "vaultId": "gtuscc",
+      "name": "Gauntlet Levered USCC",
+      "protocol": "aera",
+      "strategy": "Levered Superstate USCC",
+      "deployments": [
+        {
+          "chain": "evm",
+          "chainId": 1,
+          "vaultAddress": "0x02b6bFD9561aC669305A0af0e5b88D9Cf850Bf67",
+          "provisionerAddress": "0xa9cdBbaFD61bc29C80989e5805c41f611BA7a5DA",
+          "vaultType": "multi-depositor",
+          "depositMode": "async",
+          "supplyToken": [
+            {
+              "address": "0x14d60e7fdc0d71d8611742720e4c50e7a974020c",
+              "symbol": "USCC",
+              "decimals": 6
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "vaultId": "gtlend",
+      "name": "Gauntlet Lend",
+      "protocol": "aera",
+      "strategy": "Multi-chain Stablecoin Lending",
+      "deployments": [
+        {
+          "chain": "evm",
+          "chainId": 8453,
+          "vaultAddress": "0x2Bb2e3c0a970E74D219bADeC5d05E2D4cf456Ac8",
+          "provisionerAddress": "0x6cAa540b9193EceE47B674c7B33038dA8d1A6A59",
+          "vaultType": "multi-depositor",
+          "depositMode": "async",
+          "supplyToken": [
+            {
+              "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+              "symbol": "USDC",
+              "decimals": 6
+            }
+          ]
+        },
+        {
+          "chain": "evm",
+          "chainId": 1,
+          "vaultAddress": "0xF008043d4a0301E7dC45A92FFf77e3af1F975Ce5",
+          "provisionerAddress": "0xf9bd6C06fe8D8DB1dF3FD282417060c9973EB024",
+          "vaultType": "multi-depositor",
+          "depositMode": "async",
+          "supplyToken": [
+            {
+              "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+              "symbol": "USDC",
+              "decimals": 6
+            }
+          ]
+        },
+        {
+          "chain": "evm",
+          "chainId": 42161,
+          "vaultAddress": "0x93d5226FA75C1Ff8ba55943355A659Ed0A634eF5",
+          "provisionerAddress": "0xb182f58Dff2A5c8Ea4Acd34136cbc1c812EE9d1d",
+          "vaultType": "multi-depositor",
+          "depositMode": "async",
+          "supplyToken": [
+            {
+              "address": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+              "symbol": "USDC",
+              "decimals": 6
+            }
+          ]
+        },
+        {
+          "chain": "evm",
+          "chainId": 10,
+          "vaultAddress": "0x79A296131A8cAE82613AA16A158Ae146742Ac592",
+          "provisionerAddress": "0xDe32bC1bDBDF66395e7654D4417D37327c5924d4",
+          "vaultType": "multi-depositor",
+          "depositMode": "async",
+          "supplyToken": [
+            {
+              "address": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+              "symbol": "USDC",
+              "decimals": 6
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "vaultId": "kasteurcstg",
+      "name": "KastEURC Staging",
+      "protocol": "aera",
+      "strategy": "EURC Yield",
+      "deployments": [
+        {
+          "chain": "evm",
+          "chainId": 8453,
+          "vaultAddress": "0xEAADcC817cf20E6aF5563477cd6D5Fb3D9C85806",
+          "provisionerAddress": "0xC77EA8B5b793a61eA34e13097805854Ec8fD8a71",
+          "vaultType": "multi-depositor",
+          "depositMode": "async",
+          "supplyToken": [
+            {
+              "address": "0x60a3e35cc302bfa44cb288bc5a4f316fdb1adb42",
+              "symbol": "EURC",
+              "decimals": 6
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "vaultId": "kasteth",
+      "name": "KastETH",
+      "protocol": "aera",
+      "strategy": "WETH Yield",
+      "deployments": [
+        {
+          "chain": "evm",
+          "chainId": 1,
+          "vaultAddress": "0x6e4713B21E2879642a83d1c4dC0daCaa7ec6dB63",
+          "provisionerAddress": "0x5251B43F11209Cf15249D453A30c900E53fedb4F",
+          "vaultType": "multi-depositor",
+          "depositMode": "async",
+          "supplyToken": [
+            {
+              "address": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+              "symbol": "WETH",
+              "decimals": 18
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
