@@ -1,0 +1,316 @@
+name: Publish npm Package
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Publish target
+        required: true
+        type: choice
+        options:
+          - dry-run
+          - next
+          - latest
+      git_ref:
+        description: Git ref to publish from. Defaults to the ref selected in the workflow UI.
+        required: false
+        type: string
+      dist_tag:
+        description: Optional npm dist-tag override. Defaults from target.
+        required: false
+        type: string
+      npm_access:
+        description: npm access level to publish with
+        required: false
+        default: public
+        type: choice
+        options:
+          - public
+          - restricted
+
+concurrency:
+  group: npm-publish-${{ github.event.inputs.target }}-${{ github.event.inputs.git_ref || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Prepare Publish Request
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      dist_tag: ${{ steps.target.outputs.dist_tag }}
+      publish: ${{ steps.target.outputs.publish }}
+      checkout_ref: ${{ steps.target.outputs.checkout_ref }}
+    steps:
+      - name: Resolve publish target
+        id: target
+        shell: bash
+        run: |
+          dist_tag="${{ inputs.dist_tag }}"
+          if [[ -z "$dist_tag" ]]; then
+            case "${{ inputs.target }}" in
+              dry-run|latest)
+                dist_tag="latest"
+                ;;
+              next)
+                dist_tag="next"
+                ;;
+              *)
+                echo "Unsupported target: ${{ inputs.target }}" >&2
+                exit 1
+                ;;
+            esac
+          fi
+
+          publish="false"
+          if [[ "${{ inputs.target }}" != "dry-run" ]]; then
+            publish="true"
+          fi
+
+          checkout_ref="${{ inputs.git_ref || github.ref }}"
+
+          echo "dist_tag=$dist_tag" >> "$GITHUB_OUTPUT"
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+          echo "checkout_ref=$checkout_ref" >> "$GITHUB_OUTPUT"
+
+  validate:
+    name: Validate Package
+    needs: [prepare]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    env:
+      NPM_ACCESS: ${{ inputs.npm_access }}
+    outputs:
+      artifact_name: ${{ steps.pack.outputs.artifact_name }}
+      package_name: ${{ steps.validate.outputs.package_name }}
+      package_version: ${{ steps.validate.outputs.package_version }}
+      checked_out_ref: ${{ steps.checkout_ref.outputs.checked_out_ref }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare.outputs.checkout_ref }}
+
+      - name: Determine checked out ref
+        id: checkout_ref
+        run: |
+          branch_name="$(git branch --show-current)"
+          tag_name="$(git describe --tags --exact-match 2>/dev/null || true)"
+
+          if [[ -n "$branch_name" ]]; then
+            checked_out_ref="refs/heads/$branch_name"
+          elif [[ -n "$tag_name" ]]; then
+            checked_out_ref="refs/tags/$tag_name"
+          else
+            checked_out_ref="detached"
+          fi
+
+          echo "checked_out_ref=$checked_out_ref" >> "$GITHUB_OUTPUT"
+
+      - name: Restrict live publishes to approved refs
+        if: needs.prepare.outputs.publish == 'true'
+        run: |
+          checked_out_ref="${{ steps.checkout_ref.outputs.checked_out_ref }}"
+          case "$checked_out_ref" in
+            refs/heads/main|refs/tags/*)
+              ;;
+            *)
+              echo "Live publish is only allowed from main or a git tag." >&2
+              echo "Resolved ref: $checked_out_ref" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: yarn
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Upgrade npm CLI
+        run: npm install --global npm@^11.5.1
+
+      - name: Assert npm CLI version
+        run: |
+          npm_version="$(npm --version)"
+          echo "npm_version=$npm_version"
+          node -e '
+            const actual = process.argv[1].split(".").map(Number);
+            const minimum = [11, 5, 1];
+            for (let i = 0; i < minimum.length; i += 1) {
+              const lhs = actual[i] ?? 0;
+              const rhs = minimum[i];
+              if (lhs > rhs) process.exit(0);
+              if (lhs < rhs) {
+                console.error(`npm ${process.argv[1]} is below required minimum 11.5.1`);
+                process.exit(1);
+              }
+            }
+          ' "$npm_version"
+
+      - name: Print tool versions
+        run: |
+          node --version
+          npm --version
+          yarn --version
+
+      - name: Install dependencies
+        run: yarn install
+
+      - name: Validate package manifest
+        id: validate
+        run: |
+          node - "$GITHUB_OUTPUT" <<'NODE'
+          const fs = require("fs");
+
+          const githubOutputPath = process.argv[2];
+          const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+
+          if (!pkg.name) {
+            throw new Error('package.json is missing "name"');
+          }
+
+          if (!pkg.version) {
+            throw new Error(`Package ${pkg.name} is missing "version"`);
+          }
+
+          if (pkg.private === true) {
+            throw new Error(`Package ${pkg.name} is marked private and cannot be published`);
+          }
+
+          if (!pkg.scripts || !pkg.scripts.build) {
+            throw new Error(`Package ${pkg.name} must define a build script before publishing`);
+          }
+
+          const hasTest = Boolean(pkg.scripts && pkg.scripts.test);
+          fs.appendFileSync(githubOutputPath, `has_test=${hasTest}\n`);
+          fs.appendFileSync(githubOutputPath, `package_name=${pkg.name}\n`);
+          fs.appendFileSync(githubOutputPath, `package_version=${pkg.version}\n`);
+          NODE
+
+      - name: Build package
+        run: yarn build
+
+      - name: Run package tests
+        if: steps.validate.outputs.has_test == 'true'
+        run: yarn test
+
+      - name: Inspect package tarball
+        run: npm pack --dry-run
+
+      - name: Run npm publish dry-run
+        run: |
+          npm publish \
+            --dry-run \
+            --access "$NPM_ACCESS" \
+            --tag "${{ needs.prepare.outputs.dist_tag }}"
+
+      - name: Pack publish artifact
+        id: pack
+        run: |
+          pack_json="$(npm pack --json)"
+          tarball_name="$(node -e 'const data = JSON.parse(process.argv[1]); process.stdout.write(data[0].filename);' "$pack_json")"
+          artifact_name="${{ steps.validate.outputs.package_name }}-${{ steps.validate.outputs.package_version }}-tgz"
+
+          echo "$pack_json"
+          echo "tarball_name=$tarball_name" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
+
+      - name: Upload publish artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.pack.outputs.artifact_name }}
+          path: ${{ steps.pack.outputs.tarball_name }}
+          if-no-files-found: error
+
+      - name: Write workflow summary
+        run: |
+          {
+            echo "## npm publish validation"
+            echo
+            echo "- Package: \`${{ steps.validate.outputs.package_name }}\`"
+            echo "- Version: \`${{ steps.validate.outputs.package_version }}\`"
+            echo "- Target: \`${{ inputs.target }}\`"
+            echo "- Dist-tag: \`${{ needs.prepare.outputs.dist_tag }}\`"
+            echo "- Publish requested: \`${{ needs.prepare.outputs.publish }}\`"
+            echo "- Checked out ref: \`${{ steps.checkout_ref.outputs.checked_out_ref }}\`"
+            echo "- Artifact: \`${{ steps.pack.outputs.artifact_name }}\`"
+            echo "- Live publish environment: \`npm-publish\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  publish:
+    name: Publish Package
+    needs: [prepare, validate]
+    if: needs.prepare.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    environment: npm-publish
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        shell: bash
+    env:
+      NPM_ACCESS: ${{ inputs.npm_access }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare.outputs.checkout_ref }}
+
+      - name: Download publish artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.validate.outputs.artifact_name }}
+          path: ./dist-artifact
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Upgrade npm CLI
+        run: npm install --global npm@^11.5.1
+
+      - name: Assert publish artifact count
+        run: |
+          shopt -s nullglob
+          tarballs=(dist-artifact/*.tgz)
+          if [[ "${#tarballs[@]}" -ne 1 ]]; then
+            printf 'Expected exactly one packed artifact, found %s\n' "${#tarballs[@]}" >&2
+            exit 1
+          fi
+          echo "artifact_path=${tarballs[0]}" >> "$GITHUB_ENV"
+
+      - name: Publish package to npm
+        run: |
+          npm publish \
+            "$artifact_path" \
+            --provenance \
+            --access "$NPM_ACCESS" \
+            --tag "${{ needs.prepare.outputs.dist_tag }}"
+
+      - name: Write publish summary
+        run: |
+          {
+            echo "## npm publish release"
+            echo
+            echo "- Package: \`${{ needs.validate.outputs.package_name }}\`"
+            echo "- Version: \`${{ needs.validate.outputs.package_version }}\`"
+            echo "- Checked out ref: \`${{ needs.validate.outputs.checked_out_ref }}\`"
+            echo "- Dist-tag: \`${{ needs.prepare.outputs.dist_tag }}\`"
+            echo "- Environment: \`npm-publish\`"
+          } >> "$GITHUB_STEP_SUMMARY"
