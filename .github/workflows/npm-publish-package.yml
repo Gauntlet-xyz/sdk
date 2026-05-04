@@ -1,22 +1,19 @@
 name: Publish npm Package
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - package.json
   workflow_dispatch:
     inputs:
-      target:
-        description: Publish target
-        required: true
-        type: choice
-        options:
-          - dry-run
-          - next
-          - latest
       git_ref:
-        description: Git ref to publish from. Defaults to the ref selected in the workflow UI.
+        description: Git ref to validate. Defaults to the ref selected in the workflow UI.
         required: false
         type: string
       dist_tag:
-        description: Optional npm dist-tag override. Defaults from target.
+        description: Optional npm dist-tag override for dry-run validation.
         required: false
         type: string
       npm_access:
@@ -29,7 +26,7 @@ on:
           - restricted
 
 concurrency:
-  group: npm-publish-${{ github.event.inputs.target }}-${{ github.event.inputs.git_ref || github.ref }}
+  group: npm-publish-${{ github.event_name }}-${{ github.event.inputs.git_ref || github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -42,41 +39,59 @@ jobs:
       dist_tag: ${{ steps.target.outputs.dist_tag }}
       publish: ${{ steps.target.outputs.publish }}
       checkout_ref: ${{ steps.target.outputs.checkout_ref }}
+      run_validation: ${{ steps.target.outputs.run_validation }}
     steps:
+      - name: Checkout repository for push evaluation
+        if: github.event_name == 'push'
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
       - name: Resolve publish target
         id: target
         shell: bash
         run: |
+          event_name="${{ github.event_name }}"
           dist_tag="${{ inputs.dist_tag }}"
-          if [[ -z "$dist_tag" ]]; then
-            case "${{ inputs.target }}" in
-              dry-run|latest)
-                dist_tag="latest"
-                ;;
-              next)
-                dist_tag="next"
-                ;;
-              *)
-                echo "Unsupported target: ${{ inputs.target }}" >&2
-                exit 1
-                ;;
-            esac
-          fi
-
           publish="false"
-          if [[ "${{ inputs.target }}" != "dry-run" ]]; then
+
+          if [[ "$event_name" == "push" ]]; then
             publish="true"
+            if [[ -z "$dist_tag" ]]; then
+              dist_tag="latest"
+            fi
+          else
+            if [[ -z "$dist_tag" ]]; then
+              dist_tag="latest"
+            fi
           fi
 
           checkout_ref="${{ inputs.git_ref || github.ref }}"
+          run_validation="true"
 
+          if [[ "$event_name" == "push" ]]; then
+            current_version="$(node -p "require('./package.json').version")"
+            previous_version="$(git show HEAD^:package.json | node -e "let data=''; process.stdin.on('data', chunk => data += chunk); process.stdin.on('end', () => process.stdout.write(JSON.parse(data).version));")"
+
+            echo "previous_version=$previous_version"
+            echo "current_version=$current_version"
+
+            if [[ "$previous_version" == "$current_version" ]]; then
+              publish="false"
+              run_validation="false"
+            fi
+          fi
+
+          echo "event_name=$event_name" >> "$GITHUB_OUTPUT"
           echo "dist_tag=$dist_tag" >> "$GITHUB_OUTPUT"
           echo "publish=$publish" >> "$GITHUB_OUTPUT"
           echo "checkout_ref=$checkout_ref" >> "$GITHUB_OUTPUT"
+          echo "run_validation=$run_validation" >> "$GITHUB_OUTPUT"
 
   validate:
     name: Validate Package
     needs: [prepare]
+    if: needs.prepare.outputs.run_validation == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -95,6 +110,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ needs.prepare.outputs.checkout_ref }}
+          fetch-depth: 2
 
       - name: Determine checked out ref
         id: checkout_ref
@@ -111,20 +127,6 @@ jobs:
           fi
 
           echo "checked_out_ref=$checked_out_ref" >> "$GITHUB_OUTPUT"
-
-      - name: Restrict live publishes to approved refs
-        if: needs.prepare.outputs.publish == 'true'
-        run: |
-          checked_out_ref="${{ steps.checkout_ref.outputs.checked_out_ref }}"
-          case "$checked_out_ref" in
-            refs/heads/main|refs/tags/*)
-              ;;
-            *)
-              echo "Live publish is only allowed from main or a git tag." >&2
-              echo "Resolved ref: $checked_out_ref" >&2
-              exit 1
-              ;;
-          esac
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -239,7 +241,7 @@ jobs:
             echo
             echo "- Package: \`${{ steps.validate.outputs.package_name }}\`"
             echo "- Version: \`${{ steps.validate.outputs.package_version }}\`"
-            echo "- Target: \`${{ inputs.target }}\`"
+            echo "- Event: \`${{ github.event_name }}\`"
             echo "- Dist-tag: \`${{ needs.prepare.outputs.dist_tag }}\`"
             echo "- Publish requested: \`${{ needs.prepare.outputs.publish }}\`"
             echo "- Checked out ref: \`${{ steps.checkout_ref.outputs.checked_out_ref }}\`"

@@ -8,10 +8,11 @@ Use [`npm-publish-package.yml`](./workflows/npm-publish-package.yml) for package
 
 The workflow enforces these repo-side controls:
 
-- `workflow_dispatch` requires an explicit publish target
-- `dry-run` can run against any selected ref for packaging validation
+- merged version bumps to `main` trigger real publish automatically
+- `workflow_dispatch` is for packaging validation only
+- manual validation can run against any selected ref
 - `npm publish --dry-run` always runs before any real publish
-- live publishes are limited to `main` or a git tag
+- live publish requires that the `package.json` version value changed
 - live publishes always run in the hardcoded `npm-publish` GitHub Environment
 - the real publish step consumes the exact packed tarball produced by validation
 - live publish uses `npm publish --provenance`
@@ -25,7 +26,7 @@ Trusted Publishing is configured outside git, but it should be treated as part o
 2. Bind the package to `Gauntlet-xyz/sdk`.
 3. Restrict the trusted workflow to `.github/workflows/npm-publish-package.yml`.
 4. Verify the package can be published without any long-lived `NPM_TOKEN`.
-5. Run a dry-run in GitHub Actions first, then a real publish from `main` or a release tag through the `npm-publish` environment.
+5. Run a dry-run in GitHub Actions first, then merge a PR that changes the `package.json` version on `main`.
 6. After publish, verify the release shows npm provenance and links back to the GitHub Actions run.
 
 ## Package Readiness
@@ -38,7 +39,6 @@ Before the package is allowed onto the public release path:
 
 ## Operational Notes
 
-- Use `target=dry-run` for packaging and release validation without publishing.
-- Use `target=next` for prerelease distribution when appropriate.
-- Use live publish targets only from `main` or a release tag.
+- Use `workflow_dispatch` for packaging and release validation without publishing.
+- Use PR merge to `main` with a version bump to trigger real publish.
 - Keep the `npm-publish` GitHub Environment protected. That environment is the approval boundary for live release.

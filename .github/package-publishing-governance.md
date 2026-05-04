@@ -22,7 +22,6 @@ These owners should cover:
 GitHub branch protection is configured outside git. Apply a ruleset that covers:
 
 - `main`
-- `release/*`
 - `version-bump/*`
 
 Required settings:
@@ -41,6 +40,8 @@ For version bump pull requests, require both:
 - `@paul-vijender`
 
 If GitHub rulesets cannot target named individuals directly, use CODEOWNERS on `package.json` and release-control files, then require code owner review in the branch ruleset.
+
+Version bumps should be merged through PRs into `main`; that merge is the deployment trigger for npm publish.
 
 ## GitHub Environment
 
