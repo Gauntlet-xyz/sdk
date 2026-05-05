@@ -20,7 +20,7 @@ export type PreparedTx = {
 /**
  * Build the full attribution suffix to append to transaction calldata.
  *
- * PUBLIC:  ERC-8021 builder code only — `0x8021{builderCode utf8}`, or `0x` if no builderCode.
+ * PUBLIC:  ERC-8021 builder code only — `0x{codesLength}{builderCode utf8}{schemaId=0x00}{ercMarker}`, or `0x` if no builderCode.
  * ENCODED: Requests a sourceId from the Gauntlet API with builder code as an arg and encodes that.
  * PRIVATE: Generates a random salt and posts it to the Gauntlet API.
  *
