@@ -129,7 +129,25 @@ describe('morpho', () => {
         });
       }
 
-      const partialWithdrawAmount = 1000n;
+      const sharesAfterDeposit = await publicClient.readContract({
+        address: MORPHO_VAULT_ADDRESS,
+        abi: erc4626Abi,
+        functionName: 'balanceOf',
+        args: [account.address],
+      });
+      expect(sharesAfterDeposit).toBeGreaterThan(0n);
+
+      // MetaMorpho's _deposit calls _supplyMorpho, auto-deploying deposited USDC into
+      // Morpho markets. At this fork block those markets are near 100% utilization, leaving
+      // the vault with ~0 idle balance. _withdrawMorpho checks idle first, so we seed the
+      // vault with idle USDC directly to make all three withdrawal paths below succeed.
+      await testClient.setStorageAt({
+        address: USDC_ADDRESS,
+        index: usdcBalanceSlot(MORPHO_VAULT_ADDRESS),
+        value: numberToHex(parseUnits('100000', 6), { size: 32 }),
+      });
+
+      const partialWithdrawAmount = parseUnits('1', 6); // 1 USDC
 
       const usdcBeforePartial = await publicClient.readContract({
         address: USDC_ADDRESS,

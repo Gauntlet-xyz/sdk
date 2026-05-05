@@ -27,11 +27,30 @@ export interface TestNode {
   chain: Chain;
 }
 
+const ALCHEMY_NETWORK_NAMES: Record<number, string> = {
+  1: 'eth-mainnet',
+  8453: 'base-mainnet',
+  42161: 'arb-mainnet',
+  10: 'opt-mainnet',
+  137: 'polygon-mainnet',
+};
+
+function getAlchemyForkUrl(chain: Chain): string | undefined {
+  const key = process.env.ALCHEMY_API_KEY;
+  if (!key) return undefined;
+  const network = ALCHEMY_NETWORK_NAMES[chain.id];
+  if (!network) return undefined;
+  return `https://${network}.g.alchemy.com/v2/${key}`;
+}
+
 export async function setupAnvil(
   chain: Chain,
   fork_block_number: number | undefined
 ): Promise<TestNode> {
-  const forkUrl = process.env[`FORK_URL_${chain.id}`] ?? chain.rpcUrls.default.http[0];
+  const forkUrl =
+    process.env[`FORK_URL_${chain.id}`] ??
+    getAlchemyForkUrl(chain) ??
+    chain.rpcUrls.default.http[0];
 
   const anvil = createAnvil({
     forkUrl,
@@ -94,7 +113,11 @@ export async function sendTransactionAndWait(
   tx: { to: Address; data: Hex; account: Address }
 ): Promise<TransactionReceipt> {
   const hash = await client.sendTransaction(tx);
-  return await client.waitForTransactionReceipt({ hash });
+  const receipt = await client.waitForTransactionReceipt({ hash });
+  if (receipt.status === 'reverted') {
+    throw new Error(`Transaction reverted: to=${tx.to} selector=${tx.data.slice(0, 10)}`);
+  }
+  return receipt;
 }
 
 export async function simulateAndWriteContractAndWait<
