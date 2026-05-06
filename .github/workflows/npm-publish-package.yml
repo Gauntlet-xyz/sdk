@@ -155,19 +155,13 @@ jobs:
             }
           ' "$npm_version"
 
-      - name: Enable Corepack + activate Yarn from packageManager
-        run: |
-          corepack enable
-          corepack prepare yarn@4.3.1 --activate
-
       - name: Print tool versions
         run: |
           node --version
           npm --version
-          yarn --version
 
       - name: Install dependencies
-        run: yarn install
+        run: npm ci
 
       - name: Validate package manifest
         id: validate
@@ -201,11 +195,11 @@ jobs:
           NODE
 
       - name: Build package
-        run: yarn build
+        run: npm run build
 
       - name: Run package tests
         if: steps.validate.outputs.has_test == 'true'
-        run: yarn test
+        run: npm test
 
       - name: Inspect package tarball
         run: npm pack --dry-run
@@ -284,11 +278,6 @@ jobs:
 
       - name: Upgrade npm CLI
         run: npm install --global npm@11.5.1
-
-      - name: Enable Corepack + activate Yarn from packageManager
-        run: |
-          corepack enable
-          corepack prepare yarn@4.3.1 --activate
 
       - name: Assert publish artifact count
         run: |
