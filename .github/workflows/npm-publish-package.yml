@@ -134,13 +134,8 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org
 
-      - name: Enable Corepack + activate Yarn from packageManager
-        run: |
-          corepack enable
-          corepack prepare yarn@4.3.1 --activate
-
       - name: Upgrade npm CLI
-        run: npm install --global npm@^11.5.1
+        run: npm install --global npm@11.5.1
 
       - name: Assert npm CLI version
         run: |
@@ -159,6 +154,11 @@ jobs:
               }
             }
           ' "$npm_version"
+
+      - name: Enable Corepack + activate Yarn from packageManager
+        run: |
+          corepack enable
+          corepack prepare yarn@4.3.1 --activate
 
       - name: Print tool versions
         run: |
@@ -282,13 +282,13 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org
 
+      - name: Upgrade npm CLI
+        run: npm install --global npm@11.5.1
+
       - name: Enable Corepack + activate Yarn from packageManager
         run: |
           corepack enable
           corepack prepare yarn@4.3.1 --activate
-
-      - name: Upgrade npm CLI
-        run: npm install --global npm@^11.5.1
 
       - name: Assert publish artifact count
         run: |
