@@ -1,7 +1,0 @@
-# CODEOWNERS — SDK Repo
-#
-# The last matching pattern takes precedence.
-
-.github/workflows/npm-publish-package.yml @rdaq @paul-vijender
-.github/package-publishing*.md @rdaq @paul-vijender
-package.json @rdaq @paul-vijender
