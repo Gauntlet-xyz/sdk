@@ -1,6 +1,12 @@
 {
-  "extends": "../../tsconfig.build.json",
   "compilerOptions": {
+    "strict": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
     "baseUrl": "./",
     "rootDir": "./src",
     "outDir": "./dist",
