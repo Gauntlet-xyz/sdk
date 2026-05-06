@@ -210,7 +210,10 @@ jobs:
         run: |
           pack_json="$(npm pack --json)"
           tarball_name="$(node -e 'const data = JSON.parse(process.argv[1]); process.stdout.write(data[0].filename);' "$pack_json")"
-          artifact_name="${{ steps.validate.outputs.package_name }}-${{ steps.validate.outputs.package_version }}-tgz"
+          safe_name="${{ steps.validate.outputs.package_name }}"
+          safe_name="${safe_name#@}"
+          safe_name="${safe_name//\//-}"
+          artifact_name="${safe_name}-${{ steps.validate.outputs.package_version }}-tgz"
 
           echo "$pack_json"
           echo "tarball_name=$tarball_name" >> "$GITHUB_OUTPUT"
