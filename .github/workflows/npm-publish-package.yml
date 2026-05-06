@@ -139,8 +139,8 @@ jobs:
           corepack enable
           corepack prepare yarn@4.3.1 --activate
 
-      - name: Pin npm CLI
-        run: npm install --global npm@10.9.7
+      - name: Upgrade npm CLI
+        run: npm install --global npm@^11.5.1
 
       - name: Assert npm CLI version
         run: |
@@ -148,13 +148,13 @@ jobs:
           echo "npm_version=$npm_version"
           node -e '
             const actual = process.argv[1].split(".").map(Number);
-            const minimum = [10, 9, 7];
+            const minimum = [11, 5, 1];
             for (let i = 0; i < minimum.length; i += 1) {
               const lhs = actual[i] ?? 0;
               const rhs = minimum[i];
               if (lhs > rhs) process.exit(0);
               if (lhs < rhs) {
-                console.error(`npm ${process.argv[1]} is below required minimum 10.9.7`);
+                console.error(`npm ${process.argv[1]} is below required minimum 11.5.1`);
                 process.exit(1);
               }
             }
@@ -287,8 +287,8 @@ jobs:
           corepack enable
           corepack prepare yarn@4.3.1 --activate
 
-      - name: Pin npm CLI
-        run: npm install --global npm@10.9.7
+      - name: Upgrade npm CLI
+        run: npm install --global npm@^11.5.1
 
       - name: Assert publish artifact count
         run: |
