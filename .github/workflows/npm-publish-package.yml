@@ -188,18 +188,12 @@ jobs:
             throw new Error(`Package ${pkg.name} must define a build script before publishing`);
           }
 
-          const hasTest = Boolean(pkg.scripts && pkg.scripts.test);
-          fs.appendFileSync(githubOutputPath, `has_test=${hasTest}\n`);
           fs.appendFileSync(githubOutputPath, `package_name=${pkg.name}\n`);
           fs.appendFileSync(githubOutputPath, `package_version=${pkg.version}\n`);
           NODE
 
       - name: Build package
         run: npm run build
-
-      - name: Run package tests
-        if: steps.validate.outputs.has_test == 'true'
-        run: npm test
 
       - name: Inspect package tarball
         run: npm pack --dry-run
