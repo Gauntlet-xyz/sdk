@@ -254,7 +254,7 @@ jobs:
       run:
         shell: bash
     env:
-      NPM_ACCESS: ${{ inputs.npm_access }}
+      NPM_ACCESS: ${{ inputs.npm_access || 'public' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
