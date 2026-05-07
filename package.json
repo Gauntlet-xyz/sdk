@@ -1,6 +1,6 @@
 {
   "name": "@gauntlet-xyz/sdk",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Official Gauntlet SDK for vault deposits, withdrawals, and attribution",
   "license": "MIT",
   "keywords": [
@@ -14,6 +14,10 @@
     "withdraw",
     "sdk"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Gauntlet-xyz/sdk"
+  },
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org"
