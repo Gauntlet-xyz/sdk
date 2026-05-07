@@ -284,7 +284,7 @@ jobs:
             printf 'Expected exactly one packed artifact, found %s\n' "${#tarballs[@]}" >&2
             exit 1
           fi
-          echo "artifact_path=${tarballs[0]}" >> "$GITHUB_ENV"
+          echo "artifact_path=./${tarballs[0]}" >> "$GITHUB_ENV"
 
       - name: Publish package to npm
         run: |
