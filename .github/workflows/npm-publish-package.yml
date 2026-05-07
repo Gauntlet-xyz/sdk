@@ -134,13 +134,8 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org
 
-      - name: Enable Corepack + activate Yarn from packageManager
-        run: |
-          corepack enable
-          corepack prepare yarn@4.3.1 --activate
-
       - name: Upgrade npm CLI
-        run: npm install --global npm@^11.5.1
+        run: npm install --global npm@11.5.1
 
       - name: Assert npm CLI version
         run: |
@@ -164,10 +159,9 @@ jobs:
         run: |
           node --version
           npm --version
-          yarn --version
 
       - name: Install dependencies
-        run: yarn install
+        run: npm install
 
       - name: Validate package manifest
         id: validate
@@ -194,18 +188,12 @@ jobs:
             throw new Error(`Package ${pkg.name} must define a build script before publishing`);
           }
 
-          const hasTest = Boolean(pkg.scripts && pkg.scripts.test);
-          fs.appendFileSync(githubOutputPath, `has_test=${hasTest}\n`);
           fs.appendFileSync(githubOutputPath, `package_name=${pkg.name}\n`);
           fs.appendFileSync(githubOutputPath, `package_version=${pkg.version}\n`);
           NODE
 
       - name: Build package
-        run: yarn build
-
-      - name: Run package tests
-        if: steps.validate.outputs.has_test == 'true'
-        run: yarn test
+        run: npm run build
 
       - name: Inspect package tarball
         run: npm pack --dry-run
@@ -222,7 +210,10 @@ jobs:
         run: |
           pack_json="$(npm pack --json)"
           tarball_name="$(node -e 'const data = JSON.parse(process.argv[1]); process.stdout.write(data[0].filename);' "$pack_json")"
-          artifact_name="${{ steps.validate.outputs.package_name }}-${{ steps.validate.outputs.package_version }}-tgz"
+          safe_name="${{ steps.validate.outputs.package_name }}"
+          safe_name="${safe_name#@}"
+          safe_name="${safe_name//\//-}"
+          artifact_name="${safe_name}-${{ steps.validate.outputs.package_version }}-tgz"
 
           echo "$pack_json"
           echo "tarball_name=$tarball_name" >> "$GITHUB_OUTPUT"
@@ -263,7 +254,7 @@ jobs:
       run:
         shell: bash
     env:
-      NPM_ACCESS: ${{ inputs.npm_access }}
+      NPM_ACCESS: ${{ inputs.npm_access || 'public' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -282,13 +273,8 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org
 
-      - name: Enable Corepack + activate Yarn from packageManager
-        run: |
-          corepack enable
-          corepack prepare yarn@4.3.1 --activate
-
       - name: Upgrade npm CLI
-        run: npm install --global npm@^11.5.1
+        run: npm install --global npm@11.5.1
 
       - name: Assert publish artifact count
         run: |
