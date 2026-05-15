@@ -1,5 +1,5 @@
 {
-  "version": "2026-04-30",
+  "version": "2026-05-15",
   "vaults": [
     {
       "vaultId": "baseUsdcPrime",
@@ -2131,6 +2131,52 @@
             {
               "address": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
               "symbol": "WETH",
+              "decimals": 18
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "vaultId": "lidov3dev",
+      "name": "evstETH Dev",
+      "protocol": "aera",
+      "strategy": "Lido V3 wstETH Leverage",
+      "deployments": [
+        {
+          "chain": "evm",
+          "chainId": 1,
+          "vaultAddress": "0x0DdF5C92efdA86aff86bb8569183d804c0eCfE7f",
+          "provisionerAddress": "0x38DbfFd86DC587CA33077F22c5a52317240d083A",
+          "vaultType": "multi-depositor",
+          "depositMode": "async",
+          "supplyToken": [
+            {
+              "address": "0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0",
+              "symbol": "wstETH",
+              "decimals": 18
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "vaultId": "lidov3stg",
+      "name": "evstETH Stg",
+      "protocol": "aera",
+      "strategy": "Lido V3 wstETH Leverage",
+      "deployments": [
+        {
+          "chain": "evm",
+          "chainId": 1,
+          "vaultAddress": "0x0313C149AB341e8A3695edC472c8723F27379315",
+          "provisionerAddress": "0x3D243792210187250668E1AD929c798Ba3Da0863",
+          "vaultType": "multi-depositor",
+          "depositMode": "async",
+          "supplyToken": [
+            {
+              "address": "0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0",
+              "symbol": "wstETH",
               "decimals": 18
             }
           ]
