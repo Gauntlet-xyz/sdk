@@ -81,6 +81,9 @@ export async function withAnvil<T>(
   }
 }
 
+// Headroom over anvil's non-deterministic fork gas estimate; these txs run ~99% of it and OOG without it.
+const GAS_BUFFER = 2n;
+
 export async function simulateAndWriteContract<
   const abi extends Abi | readonly unknown[],
   functionName extends ContractFunctionName<abi, 'nonpayable' | 'payable'>,
@@ -96,26 +99,32 @@ export async function simulateAndWriteContract<
 ): Promise<WriteContractReturnType> {
   const { request } = await client.simulateContract(args);
   // Idk why this doesn't work without the cast
-  return await client.writeContract(
-    request as unknown as WriteContractParameters<
-      abi,
-      functionName,
-      args,
-      chain,
-      account,
-      chainOverride
-    >
+  const writeRequest = request as unknown as WriteContractParameters<
+    abi,
+    functionName,
+    args,
+    chain,
+    account,
+    chainOverride
+  >;
+  const gas = await client.estimateContractGas(
+    writeRequest as unknown as Parameters<typeof client.estimateContractGas>[0]
   );
+  return await client.writeContract({ ...writeRequest, gas: gas * GAS_BUFFER } as typeof writeRequest);
 }
 
 export async function sendTransactionAndWait(
   client: PublicActions & WalletActions,
   tx: { to: Address; data: Hex; account: Address }
 ): Promise<TransactionReceipt> {
-  const hash = await client.sendTransaction(tx);
+  // estimateGas runs the tx, so a logical revert throws here (with reason) before we send.
+  const gas = await client.estimateGas({ to: tx.to, data: tx.data, account: tx.account });
+  const hash = await client.sendTransaction({ ...tx, gas: gas * GAS_BUFFER });
   const receipt = await client.waitForTransactionReceipt({ hash });
   if (receipt.status === 'reverted') {
-    throw new Error(`Transaction reverted: to=${tx.to} selector=${tx.data.slice(0, 10)}`);
+    throw new Error(
+      `Transaction reverted on-chain despite a clean gas estimate: to=${tx.to} selector=${tx.data.slice(0, 10)} gasUsed=${receipt.gasUsed}`
+    );
   }
   return receipt;
 }
