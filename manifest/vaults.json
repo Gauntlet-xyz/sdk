@@ -1776,7 +1776,7 @@
           "chain": "evm",
           "chainId": 8453,
           "vaultAddress": "0x70d974963f44Bb5CeA01378E83e55cced102EE82",
-          "provisionerAddress": "0x040bA994d84758f8F4AEDD93c7d26bAE0bAF81AA",
+          "provisionerAddress": "0x11C6a42B70B66bc4A851D35e85A95103b67eC112",
           "vaultType": "multi-depositor",
           "depositMode": "async",
           "supplyToken": [
