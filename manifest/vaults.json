@@ -1847,6 +1847,7 @@
           "provisionerAddress": "0x21994912f1D286995c4d4961303cBB8E44939944",
           "vaultType": "multi-depositor",
           "depositMode": "async",
+          "expirationDays": 64,
           "supplyToken": [
             {
               "address": "0xc26a6fa2c37b38e549a4a1807543801db684f99c",
@@ -1875,6 +1876,7 @@
           "provisionerAddress": "0x01587FC1e3713cd797BD9131F64fB29558a4dd01",
           "vaultType": "multi-depositor",
           "depositMode": "async",
+          "expirationDays": 64,
           "supplyToken": [
             {
               "address": "0x99e05cdbeac5d91150935c59ff8e9ba9945d6884",

@@ -15,6 +15,8 @@ export interface EvmVaultDeployment {
   vaultType: 'single-depositor' | 'multi-depositor';
   depositMode: 'sync' | 'async' | 'both';
   supplyToken: TokenInfo[];
+  /** Number of days before an async request deadline expires. Defaults to 3. */
+  expirationDays?: number;
 }
 
 /** Union of all supported chain deployment types. Narrow on `chain` to access chain-specific fields. */

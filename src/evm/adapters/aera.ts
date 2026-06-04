@@ -102,7 +102,7 @@ export const aeraAdapter: EvmProtocolAdapter = {
         throw new UnitConversionError(vault.vaultAddress);
       }
 
-      const deadline = BigInt(Math.ceil(new Date().getTime() / 1000) + DAY * 3);
+      const deadline = BigInt(Math.ceil(new Date().getTime() / 1000) + DAY * (vault.expirationDays ?? 3));
       // Request deposit
       return [
         {
@@ -203,7 +203,7 @@ export const aeraAdapter: EvmProtocolAdapter = {
 
     if (isAsync) {
       // Request redeem
-      const deadline = BigInt(Math.ceil(new Date().getTime() / 1000) + DAY * 3);
+      const deadline = BigInt(Math.ceil(new Date().getTime() / 1000) + DAY * (vault.expirationDays ?? 3));
       if (amount === undefined) {
         throw new UnitConversionError(vault.vaultAddress);
       }
