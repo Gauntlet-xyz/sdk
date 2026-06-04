@@ -2163,23 +2163,46 @@
       ]
     },
     {
-      "vaultId": "lidov3stg",
-      "name": "evstETH Stg",
+      "vaultId": "gtlpsnib",
+      "name": "gtLPSNIB",
       "protocol": "aera",
-      "strategy": "Lido V3 wstETH Leverage",
+      "strategy": "Gauntlet x SecondFi LP Vault",
       "deployments": [
         {
           "chain": "evm",
-          "chainId": 1,
-          "vaultAddress": "0x0313C149AB341e8A3695edC472c8723F27379315",
-          "provisionerAddress": "0x3D243792210187250668E1AD929c798Ba3Da0863",
+          "chainId": 8453,
+          "vaultAddress": "0x785F3D804aCdA02CD0eC2243dc6f9F408CC075C8",
+          "provisionerAddress": "0x8b63543D76c417F293991A68BA6E7FaD5F8a7fB1",
           "vaultType": "multi-depositor",
           "depositMode": "async",
           "supplyToken": [
             {
-              "address": "0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0",
-              "symbol": "wstETH",
-              "decimals": 18
+              "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+              "symbol": "USDC",
+              "decimals": 6
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "vaultId": "gtlpluia",
+      "name": "gtLPLUIA",
+      "protocol": "aera",
+      "strategy": "Gauntlet x Liquid LP Vault",
+      "deployments": [
+        {
+          "chain": "evm",
+          "chainId": 42161,
+          "vaultAddress": "0x364d2ACDc98d1bF8A734141178996E9fB0b37d2E",
+          "provisionerAddress": "0xA9c8ee886e3632C6Db9DE90cAe59A53431FEEc06",
+          "vaultType": "multi-depositor",
+          "depositMode": "async",
+          "supplyToken": [
+            {
+              "address": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+              "symbol": "USDC",
+              "decimals": 6
             }
           ]
         }
