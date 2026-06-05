@@ -6,6 +6,13 @@ export interface TokenInfo {
   decimals: number;
 }
 
+export const ContractVersion = {
+  V1: 'v1',
+  V2: 'v2',
+} as const;
+
+export type ContractVersion = (typeof ContractVersion)[keyof typeof ContractVersion];
+
 export interface EvmVaultDeployment {
   chain: 'evm';
   chainId: number;
@@ -15,6 +22,7 @@ export interface EvmVaultDeployment {
   vaultType: 'single-depositor' | 'multi-depositor';
   depositMode: 'sync' | 'async' | 'both';
   supplyToken: TokenInfo[];
+  contractVersion?: ContractVersion;
   /** Number of days before an async request deadline expires. Defaults to 3. */
   expirationDays?: number;
 }

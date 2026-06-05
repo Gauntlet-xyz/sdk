@@ -10,7 +10,10 @@ import {
   UnsupportedAssetError,
   InvalidSlippageBPSError,
 } from '../errors';
+import { resolveContractVersion } from './aeraContracts';
+import { ContractVersion } from './types';
 import { resolveVault } from './vaults';
+import { DEFAULT_BPS, MAX_BPS } from '../constants';
 
 export interface EvmDepositParams {
   vaultId: string;
@@ -25,6 +28,10 @@ export interface EvmDepositParams {
   receiver?: Address;
   /** Slippage tolerance in basis points (e.g. 100 = 1%). Defaults to 100. */
   slippageBps?: number;
+  /** Solver tip passed to async Aera provisioner requests. Defaults to 0. */
+  solverTip?: bigint;
+  /** Maximum price age passed to async Aera provisioner requests. Defaults to 10 days. */
+  maxPriceAge?: bigint;
 }
 
 /**
@@ -61,7 +68,9 @@ export async function getDepositTx(
 ): Promise<PreparedTx[]> {
   if (
     params.slippageBps !== undefined &&
-    (!Number.isInteger(params.slippageBps) || params.slippageBps < 0 || params.slippageBps > 10000)
+    (!Number.isInteger(params.slippageBps) ||
+      params.slippageBps < 0 ||
+      params.slippageBps > Number(MAX_BPS))
   ) {
     throw new InvalidSlippageBPSError(params.slippageBps);
   }
@@ -87,9 +96,17 @@ export async function getDepositTx(
     modifiedDepositMode = vault.depositMode === 'both' ? 'async' : vault.depositMode;
   }
 
-  const spender = vault.provisionerAddress ?? vault.vaultAddress;
   const adapter = getAdapter(protocol);
   const publicClient = client.getPublicClient(chainId);
+  let spender = vault.provisionerAddress ?? vault.vaultAddress;
+  if (
+    protocol === 'aera' &&
+    vault.provisionerAddress &&
+    modifiedDepositMode === 'sync' &&
+    (await resolveContractVersion(publicClient, vault)) === ContractVersion.V2
+  ) {
+    spender = vault.vaultAddress;
+  }
   const token =
     vault.supplyToken.length > 1
       ? vault.supplyToken.find((tInfo) => tInfo.symbol === params.assetSymbol)
@@ -129,7 +146,9 @@ export async function getDepositTx(
     async: modifiedDepositMode === 'async',
     asset: token,
     publicClient,
-    slippageBps: params.slippageBps,
+    slippageBps: params.slippageBps ?? DEFAULT_BPS,
+    solverTip: params.solverTip,
+    maxPriceAge: params.maxPriceAge,
   });
   steps.push(...depositSteps);
 

@@ -12,13 +12,18 @@ import {
   parseUnits,
   parseEventLogs,
   type Address,
+  type PublicClient,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { GauntletClient } from '../src/client';
 import { getDepositTx } from '../src/evm/deposit';
+import { getDepositReceiverApprovalTx } from '../src/evm/depositReceiverApproval';
 import { getWithdrawTx } from '../src/evm/withdraw';
 import { VaultId } from '../src/evm/vaults';
 import { erc20Abi } from '../src/evm/abis/erc20';
+import { StalePriceError, UnsupportedFeatureError } from '../src/errors';
+import { resolveContractVersion } from '../src/evm/aeraContracts';
+import { ContractVersion, type EvmVaultDeployment } from '../src/evm/types';
 import { getMultiDepositorVault } from '@gauntletnetworks/aera-v3-ts-sdk/multiDepositorVault';
 import {
   solveRequestsVaultTxRequest,
@@ -33,12 +38,14 @@ import { provisionerAbi, multiDepositorVaultAbi } from '@gauntletnetworks/aera-v
 
 // First deterministic Anvil test account
 const TEST_PRIVATE_KEY = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
+const ALICE_PRIVATE_KEY = '0x59c6995e998f97a5a0044976f1fbb7f9e2cc59e6da44b6e5d012b6ef4ca5a7f8';
 
 const USDC_ADDRESS: Address = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
 const AERA_VAULT_ADDRESS: Address = '0x000000000001CdB57E58Fa75Fe420a0f4D6640D5';
 const PROVISIONER_ADDRESS: Address = '0x18CF8d963E1a727F9bbF3AEffa0Bd04FB4dBdA07';
 const VAULT_ID = VaultId.AeraUsdAlpha;
 const DEPOSIT_AMOUNT = parseUnits('100', 6); // 100 USDC
+const RECEIVER: Address = '0x00000000000000000000000000000000deadbeef';
 // NOTE: update this block number if the vault was not yet deployed at block 44_182_978
 const FORK_BLOCK = 44_182_978;
 
@@ -47,7 +54,628 @@ function usdcBalanceSlot(address: Address): `0x${string}` {
   return keccak256(encodeAbiParameters([{ type: 'address' }, { type: 'uint256' }], [address, 9n]));
 }
 
+// Minimal deployment fixture for resolveContractVersion tests. The provisioner
+// address is intentionally supplied by each test because it is the cache key.
+function aeraDeployment({
+  provisionerAddress,
+  contractVersion,
+}: {
+  provisionerAddress: Address;
+  contractVersion?: ContractVersion;
+}): EvmVaultDeployment {
+  return {
+    chain: 'evm',
+    chainId: base.id,
+    vaultAddress: AERA_VAULT_ADDRESS,
+    provisionerAddress,
+    vaultType: 'multi-depositor',
+    depositMode: 'both',
+    supplyToken: [{ symbol: 'USDC', address: USDC_ADDRESS, decimals: 6 }],
+    ...(contractVersion ? { contractVersion } : {}),
+  };
+}
+
+// Minimal PublicClient fixture. It only implements the readContract shape
+// resolveContractVersion reaches through viem's getContract(...).read.version().
+function publicClientWithContractVersion({
+  version,
+  onVersionRead,
+}: {
+  version?: string;
+  onVersionRead?: () => void;
+} = {}): PublicClient {
+  return {
+    readContract: async ({ functionName }: { functionName: string }) => {
+      if (functionName !== 'version') throw new Error(`Unexpected read: ${functionName}`);
+      onVersionRead?.();
+      if (version === undefined) throw new Error('version unavailable');
+      return version;
+    },
+  } as unknown as PublicClient;
+}
+
+function publicClientWithV2Reads({
+  allowance = 10_000n,
+  blockTimestamp = 100n,
+  maxPriceAge = 100n,
+  maxDynamicPremiumBps = 0n,
+  anchorTimestamp = 100n,
+  asyncDepositMultiplier = 10_000,
+  asyncRedeemMultiplier = 10_000,
+  syncDepositMultiplier = 10_000,
+  syncRedeemMultiplier = 9_500,
+}: {
+  allowance?: bigint;
+  blockTimestamp?: bigint;
+  maxPriceAge?: bigint;
+  maxDynamicPremiumBps?: bigint;
+  anchorTimestamp?: bigint;
+  asyncDepositMultiplier?: number;
+  asyncRedeemMultiplier?: number;
+  syncDepositMultiplier?: number;
+  syncRedeemMultiplier?: number;
+} = {}): PublicClient {
+  async function readContract({
+    functionName,
+    args,
+  }: {
+    functionName: string;
+    args?: readonly unknown[];
+  }) {
+    switch (functionName) {
+      case 'allowance':
+        return allowance;
+      case 'feeCalculator':
+        return '0x00000000000000000000000000000000000000f1';
+      case 'convertTokenToUnits':
+        return 2_000n;
+      case 'convertTokenToUnitsIfActive':
+        return args?.[2] as bigint;
+      case 'convertUnitsToToken':
+        return args?.[2] as bigint;
+      case 'convertUnitsToTokenIfActive':
+        return args?.[2] as bigint;
+      case 'tokensDetails':
+        return [
+          true,
+          true,
+          true,
+          true,
+          asyncDepositMultiplier,
+          asyncRedeemMultiplier,
+          syncDepositMultiplier,
+          syncRedeemMultiplier,
+          RECEIVER,
+          RECEIVER,
+        ];
+      case 'getSyncRedeemDetails':
+        return [maxPriceAge, 10_000n, maxDynamicPremiumBps, 0n, 0n, 0n];
+      case 'getAnchorTimestamp':
+        return anchorTimestamp;
+      default:
+        throw new Error(`Unexpected read: ${functionName}`);
+    }
+  }
+
+  return {
+    readContract,
+    multicall: async ({
+      contracts,
+    }: {
+      contracts: readonly { functionName: string; args?: readonly unknown[] }[];
+    }) => {
+      return Promise.all(contracts.map(readContract));
+    },
+    getBlock: async () => ({ timestamp: blockTimestamp }),
+  } as unknown as PublicClient;
+}
+
 describe('aera', () => {
+  test('uses manifest contractVersion without probing provisioner version', async () => {
+    let versionReads = 0;
+
+    // Manifest metadata must win over a contradictory runtime version so custom manifests can opt in explicitly.
+    await expect(
+      resolveContractVersion(
+        publicClientWithContractVersion({
+          version: '2.0',
+          onVersionRead: () => versionReads++,
+        }),
+        aeraDeployment({
+          provisionerAddress: '0x0000000000000000000000000000000000000013',
+          contractVersion: ContractVersion.V1,
+        })
+      )
+    ).resolves.toBe(ContractVersion.V1);
+
+    expect(versionReads).toBe(0);
+  });
+
+  test('detects runtime V2 provisioner version and caches result', async () => {
+    let versionReads = 0;
+    const v2Client = publicClientWithContractVersion({
+      version: '2.0',
+      onVersionRead: () => versionReads++,
+    });
+    const v2Vault = aeraDeployment({
+      provisionerAddress: '0x0000000000000000000000000000000000000012',
+    });
+
+    await expect(resolveContractVersion(v2Client, v2Vault)).resolves.toBe(ContractVersion.V2);
+    await expect(resolveContractVersion(v2Client, v2Vault)).resolves.toBe(ContractVersion.V2);
+
+    expect(versionReads).toBe(1);
+  });
+
+  test('detects runtime V1 provisioner version and caches result', async () => {
+    let versionReads = 0;
+    const v1Client = publicClientWithContractVersion({
+      version: '1.0',
+      onVersionRead: () => versionReads++,
+    });
+    const v1Vault = aeraDeployment({
+      provisionerAddress: '0x0000000000000000000000000000000000000011',
+    });
+
+    await expect(resolveContractVersion(v1Client, v1Vault)).resolves.toBe(ContractVersion.V1);
+    await expect(resolveContractVersion(v1Client, v1Vault)).resolves.toBe(ContractVersion.V1);
+
+    expect(versionReads).toBe(1);
+  });
+
+  test('defaults to legacy V1 when provisioner version method is unavailable', async () => {
+    // V1 provisioners do not expose the V2 version() method, so an unreadable
+    // version keeps existing manifests on the legacy V1 path unless metadata opts into V2.
+    await expect(
+      resolveContractVersion(
+        publicClientWithContractVersion(),
+        aeraDeployment({ provisionerAddress: '0x0000000000000000000000000000000000000010' })
+      )
+    ).resolves.toBe(ContractVersion.V1);
+  });
+
+  test('builds V2 deposit receiver approval as a receiver-signed standalone transaction', async () => {
+    const receiverAccount = privateKeyToAccount(TEST_PRIVATE_KEY);
+    const publicClient = publicClientWithV2Reads();
+    const walletClient = createWalletClient({
+      account: receiverAccount,
+      chain: base,
+      transport: http(),
+    });
+    const client = new GauntletClient({
+      evmClients: { [base.id]: publicClient },
+      wallet: walletClient,
+    });
+    client.setManifest({
+      version: 'test',
+      vaults: [
+        {
+          vaultId: VAULT_ID,
+          name: 'Mock Aera V2',
+          protocol: 'aera',
+          strategy: 'test',
+          deployments: [
+            {
+              chain: 'evm',
+              chainId: base.id,
+              vaultAddress: AERA_VAULT_ADDRESS,
+              provisionerAddress: PROVISIONER_ADDRESS,
+              vaultType: 'multi-depositor',
+              depositMode: 'both',
+              supplyToken: [{ symbol: 'USDC', address: USDC_ADDRESS, decimals: 6 }],
+              contractVersion: ContractVersion.V2,
+            },
+          ],
+        },
+      ],
+    });
+
+    const approval = await getDepositReceiverApprovalTx(client, {
+      vaultId: VAULT_ID,
+      depositor: RECEIVER,
+    });
+
+    expect(approval.tx.type).toBe('setDepositReceiverApproval');
+    expect(approval.tx.functionName).toBe('setDepositReceiverApproval');
+    expect(approval.tx.account).toBe(receiverAccount.address);
+    expect(approval.tx.args).toEqual([RECEIVER, true]);
+  });
+
+  test('does not mix receiver approval into V2 separate-receiver sync deposit steps', async () => {
+    const account = privateKeyToAccount(TEST_PRIVATE_KEY);
+    const publicClient = publicClientWithV2Reads();
+    const walletClient = createWalletClient({ account, chain: base, transport: http() });
+    const client = new GauntletClient({
+      evmClients: { [base.id]: publicClient },
+      wallet: walletClient,
+    });
+    client.setManifest({
+      version: 'test',
+      vaults: [
+        {
+          vaultId: VAULT_ID,
+          name: 'Mock Aera V2',
+          protocol: 'aera',
+          strategy: 'test',
+          deployments: [
+            {
+              chain: 'evm',
+              chainId: base.id,
+              vaultAddress: AERA_VAULT_ADDRESS,
+              provisionerAddress: PROVISIONER_ADDRESS,
+              vaultType: 'multi-depositor',
+              depositMode: 'both',
+              supplyToken: [{ symbol: 'USDC', address: USDC_ADDRESS, decimals: 6 }],
+              contractVersion: ContractVersion.V2,
+            },
+          ],
+        },
+      ],
+    });
+
+    const steps = await getDepositTx(client, {
+      vaultId: VAULT_ID,
+      amount: 2_000n,
+      depositMode: 'sync',
+      receiver: RECEIVER,
+    });
+
+    expect(steps.map((step) => step.tx.type)).toEqual(['deposit']);
+    expect(steps[0].tx.account).toBe(account.address);
+    expect(steps[0].tx.args[3]).toBe(RECEIVER);
+  });
+
+  test('approves the vault and applies V2 sync deposit multiplier', async () => {
+    const account = privateKeyToAccount(TEST_PRIVATE_KEY);
+    const publicClient = publicClientWithV2Reads({
+      allowance: 0n,
+      syncDepositMultiplier: 9_500,
+    });
+    const walletClient = createWalletClient({ account, chain: base, transport: http() });
+    const client = new GauntletClient({
+      evmClients: { [base.id]: publicClient },
+      wallet: walletClient,
+    });
+    client.setManifest({
+      version: 'test',
+      vaults: [
+        {
+          vaultId: VAULT_ID,
+          name: 'Mock Aera V2',
+          protocol: 'aera',
+          strategy: 'test',
+          deployments: [
+            {
+              chain: 'evm',
+              chainId: base.id,
+              vaultAddress: AERA_VAULT_ADDRESS,
+              provisionerAddress: PROVISIONER_ADDRESS,
+              vaultType: 'multi-depositor',
+              depositMode: 'both',
+              supplyToken: [{ symbol: 'USDC', address: USDC_ADDRESS, decimals: 6 }],
+              contractVersion: ContractVersion.V2,
+            },
+          ],
+        },
+      ],
+    });
+
+    const steps = await getDepositTx(client, {
+      vaultId: VAULT_ID,
+      amount: 2_000n,
+      depositMode: 'sync',
+      receiver: RECEIVER,
+      slippageBps: 0,
+    });
+
+    expect(steps.map((step) => step.tx.type)).toEqual(['approve', 'deposit']);
+    expect(steps[0].tx.args).toEqual([AERA_VAULT_ADDRESS, 2_000n]);
+    expect(steps[1].tx.args[2]).toBe(1_900n);
+  });
+
+  test('builds Bob receiver approval before Alice deposits to Bob', async () => {
+    const alice = privateKeyToAccount(ALICE_PRIVATE_KEY);
+    const bob = privateKeyToAccount(TEST_PRIVATE_KEY);
+    const publicClient = publicClientWithV2Reads();
+    const bobClient = new GauntletClient({
+      evmClients: { [base.id]: publicClient },
+      wallet: createWalletClient({ account: bob, chain: base, transport: http() }),
+    });
+    const aliceClient = new GauntletClient({
+      evmClients: { [base.id]: publicClient },
+      wallet: createWalletClient({ account: alice, chain: base, transport: http() }),
+    });
+    const manifest = {
+      version: 'test',
+      vaults: [
+        {
+          vaultId: VAULT_ID,
+          name: 'Mock Aera V2',
+          protocol: 'aera' as const,
+          strategy: 'test',
+          deployments: [
+            {
+              chain: 'evm' as const,
+              chainId: base.id,
+              vaultAddress: AERA_VAULT_ADDRESS,
+              provisionerAddress: PROVISIONER_ADDRESS,
+              vaultType: 'multi-depositor' as const,
+              depositMode: 'both' as const,
+              supplyToken: [{ symbol: 'USDC', address: USDC_ADDRESS, decimals: 6 }],
+              contractVersion: ContractVersion.V2,
+            },
+          ],
+        },
+      ],
+    };
+    bobClient.setManifest(manifest);
+    aliceClient.setManifest(manifest);
+
+    const approval = await getDepositReceiverApprovalTx(bobClient, {
+      vaultId: VAULT_ID,
+      depositor: alice.address,
+    });
+
+    expect(approval.tx.type).toBe('setDepositReceiverApproval');
+    expect(approval.tx.account).toBe(bob.address);
+    expect(approval.tx.args).toEqual([alice.address, true]);
+
+    const depositSteps = await getDepositTx(aliceClient, {
+      vaultId: VAULT_ID,
+      amount: 2_000n,
+      depositMode: 'sync',
+      receiver: bob.address,
+    });
+
+    expect(depositSteps.map((step) => step.tx.type)).toEqual(['deposit']);
+    expect(depositSteps[0].tx.account).toBe(alice.address);
+    expect(depositSteps[0].tx.functionName).toBe('deposit');
+    expect(depositSteps[0].tx.args[3]).toBe(bob.address);
+  });
+
+  test('uses V2 sync redeem premium and ceil rounding for sync withdraw bounds', async () => {
+    const account = privateKeyToAccount(TEST_PRIVATE_KEY);
+    const publicClient = publicClientWithV2Reads({ allowance: 0n });
+    const walletClient = createWalletClient({ account, chain: base, transport: http() });
+    const client = new GauntletClient({
+      evmClients: { [base.id]: publicClient },
+      wallet: walletClient,
+    });
+    client.setManifest({
+      version: 'test',
+      vaults: [
+        {
+          vaultId: VAULT_ID,
+          name: 'Mock Aera V2',
+          protocol: 'aera',
+          strategy: 'test',
+          deployments: [
+            {
+              chain: 'evm',
+              chainId: base.id,
+              vaultAddress: AERA_VAULT_ADDRESS,
+              provisionerAddress: PROVISIONER_ADDRESS,
+              vaultType: 'multi-depositor',
+              depositMode: 'both',
+              supplyToken: [{ symbol: 'USDC', address: USDC_ADDRESS, decimals: 6 }],
+              contractVersion: ContractVersion.V2,
+            },
+          ],
+        },
+      ],
+    });
+
+    const [withdraw] = await getWithdrawTx(client, {
+      vaultId: VAULT_ID,
+      amount: 100n,
+      depositMode: 'sync',
+      slippageBps: 0,
+    });
+
+    expect(withdraw.tx.type).toBe('withdraw');
+    expect(withdraw.tx.args[1]).toBe(100n);
+    expect(withdraw.tx.args[2]).toBe(106n);
+
+    const [redeem] = await getWithdrawTx(client, {
+      vaultId: VAULT_ID,
+      shares: 1_000n,
+      depositMode: 'sync',
+      slippageBps: 0,
+    });
+
+    expect(redeem.tx.type).toBe('redeem');
+    expect(redeem.tx.args[1]).toBe(1_000n);
+    expect(redeem.tx.args[2]).toBe(950n);
+  });
+
+  test('rejects V2 sync withdraw and redeem quotes when sync redeem price is stale', async () => {
+    const account = privateKeyToAccount(TEST_PRIVATE_KEY);
+    const publicClient = publicClientWithV2Reads({
+      anchorTimestamp: 100n,
+      blockTimestamp: 211n,
+      maxDynamicPremiumBps: 4_999n,
+      maxPriceAge: 100n,
+    });
+    const walletClient = createWalletClient({ account, chain: base, transport: http() });
+    const client = new GauntletClient({
+      evmClients: { [base.id]: publicClient },
+      wallet: walletClient,
+    });
+    client.setManifest({
+      version: 'test',
+      vaults: [
+        {
+          vaultId: VAULT_ID,
+          name: 'Mock Aera V2',
+          protocol: 'aera',
+          strategy: 'test',
+          deployments: [
+            {
+              chain: 'evm',
+              chainId: base.id,
+              vaultAddress: AERA_VAULT_ADDRESS,
+              provisionerAddress: PROVISIONER_ADDRESS,
+              vaultType: 'multi-depositor',
+              depositMode: 'both',
+              supplyToken: [{ symbol: 'USDC', address: USDC_ADDRESS, decimals: 6 }],
+              contractVersion: ContractVersion.V2,
+            },
+          ],
+        },
+      ],
+    });
+
+    await expect(
+      getWithdrawTx(client, {
+        vaultId: VAULT_ID,
+        amount: 100n,
+        depositMode: 'sync',
+      })
+    ).rejects.toThrow(StalePriceError);
+
+    await expect(
+      getWithdrawTx(client, {
+        vaultId: VAULT_ID,
+        shares: 1_000n,
+        depositMode: 'sync',
+      })
+    ).rejects.toThrow(StalePriceError);
+  });
+
+  test('passes async provisioner solver tip and max price age overrides', async () => {
+    const account = privateKeyToAccount(TEST_PRIVATE_KEY);
+    const publicClient = publicClientWithV2Reads();
+    const walletClient = createWalletClient({ account, chain: base, transport: http() });
+    const client = new GauntletClient({
+      evmClients: { [base.id]: publicClient },
+      wallet: walletClient,
+    });
+    client.setManifest({
+      version: 'test',
+      vaults: [
+        {
+          vaultId: VAULT_ID,
+          name: 'Mock Aera V2',
+          protocol: 'aera',
+          strategy: 'test',
+          deployments: [
+            {
+              chain: 'evm',
+              chainId: base.id,
+              vaultAddress: AERA_VAULT_ADDRESS,
+              provisionerAddress: PROVISIONER_ADDRESS,
+              vaultType: 'multi-depositor',
+              depositMode: 'both',
+              supplyToken: [{ symbol: 'USDC', address: USDC_ADDRESS, decimals: 6 }],
+              contractVersion: ContractVersion.V2,
+            },
+          ],
+        },
+      ],
+    });
+
+    const [deposit] = await getDepositTx(client, {
+      vaultId: VAULT_ID,
+      amount: 2_000n,
+      depositMode: 'async',
+      slippageBps: 0,
+      solverTip: 7n,
+      maxPriceAge: 42n,
+    });
+
+    expect(deposit.tx.type).toBe('requestDeposit');
+    expect(deposit.tx.args[3]).toBe(7n);
+    expect(deposit.tx.args[5]).toBe(42n);
+
+    const [redeem] = await getWithdrawTx(client, {
+      vaultId: VAULT_ID,
+      shares: 100n,
+      depositMode: 'async',
+      slippageBps: 0,
+      solverTip: 11n,
+      maxPriceAge: 77n,
+    });
+
+    expect(redeem.tx.type).toBe('requestRedeem');
+    expect(redeem.tx.args[3]).toBe(11n);
+    expect(redeem.tx.args[5]).toBe(77n);
+  });
+
+  test('applies async solver tips and provisioner multipliers to bounds', async () => {
+    const account = privateKeyToAccount(TEST_PRIVATE_KEY);
+    const publicClient = publicClientWithV2Reads({
+      asyncDepositMultiplier: 9_000,
+      asyncRedeemMultiplier: 8_000,
+    });
+    const walletClient = createWalletClient({ account, chain: base, transport: http() });
+    const client = new GauntletClient({
+      evmClients: { [base.id]: publicClient },
+      wallet: walletClient,
+    });
+    client.setManifest({
+      version: 'test',
+      vaults: [
+        {
+          vaultId: VAULT_ID,
+          name: 'Mock Aera V2',
+          protocol: 'aera',
+          strategy: 'test',
+          deployments: [
+            {
+              chain: 'evm',
+              chainId: base.id,
+              vaultAddress: AERA_VAULT_ADDRESS,
+              provisionerAddress: PROVISIONER_ADDRESS,
+              vaultType: 'multi-depositor',
+              depositMode: 'both',
+              supplyToken: [{ symbol: 'USDC', address: USDC_ADDRESS, decimals: 6 }],
+              contractVersion: ContractVersion.V2,
+            },
+          ],
+        },
+      ],
+    });
+
+    const [deposit] = await getDepositTx(client, {
+      vaultId: VAULT_ID,
+      amount: 2_000n,
+      depositMode: 'async',
+      slippageBps: 0,
+      solverTip: 200n,
+    });
+
+    expect(deposit.tx.type).toBe('requestDeposit');
+    expect(deposit.tx.args[1]).toBe(2_000n);
+    expect(deposit.tx.args[2]).toBe(1_620n);
+    expect(deposit.tx.args[3]).toBe(200n);
+
+    const [redeemByShares] = await getWithdrawTx(client, {
+      vaultId: VAULT_ID,
+      shares: 1_000n,
+      depositMode: 'async',
+      slippageBps: 0,
+      solverTip: 50n,
+    });
+
+    expect(redeemByShares.tx.type).toBe('requestRedeem');
+    expect(redeemByShares.tx.args[1]).toBe(1_000n);
+    expect(redeemByShares.tx.args[2]).toBe(750n);
+    expect(redeemByShares.tx.args[3]).toBe(50n);
+
+    const [redeemByAmount] = await getWithdrawTx(client, {
+      vaultId: VAULT_ID,
+      amount: 750n,
+      depositMode: 'async',
+      slippageBps: 0,
+      solverTip: 50n,
+    });
+
+    expect(redeemByAmount.tx.type).toBe('requestRedeem');
+    expect(redeemByAmount.tx.args[1]).toBe(1_000n);
+    expect(redeemByAmount.tx.args[2]).toBe(750n);
+    expect(redeemByAmount.tx.args[3]).toBe(50n);
+  });
+
   test('can do an async deposit and redeem', async () => {
     await withAnvil(base, FORK_BLOCK, async ({ testClient, anvil }) => {
       const account = privateKeyToAccount(TEST_PRIVATE_KEY);
@@ -289,4 +917,145 @@ describe('aera', () => {
       expect(unitsAfter).toBeLessThan(units / 1_000_000n);
     });
   }, 120_000);
+
+  test('keeps V1 sync and separate receiver paths rejected', async () => {
+    await withAnvil(base, FORK_BLOCK, async ({ anvil }) => {
+      const account = privateKeyToAccount(TEST_PRIVATE_KEY);
+      const rpcUrl = `http://127.0.0.1:${anvil.port}`;
+      const publicClient = createPublicClient({ chain: base, transport: http(rpcUrl) });
+      const walletClient = createWalletClient({ account, chain: base, transport: http(rpcUrl) });
+
+      const client = new GauntletClient({
+        evmClients: { [base.id]: publicClient },
+        wallet: walletClient,
+      });
+      client.setManifest({
+        version: 'test',
+        vaults: [
+          {
+            vaultId: VAULT_ID,
+            name: 'Mock Aera V1',
+            protocol: 'aera',
+            strategy: 'test',
+            deployments: [
+              {
+                chain: 'evm',
+                chainId: base.id,
+                vaultAddress: AERA_VAULT_ADDRESS,
+                provisionerAddress: PROVISIONER_ADDRESS,
+                vaultType: 'multi-depositor',
+                depositMode: 'both',
+                supplyToken: [{ symbol: 'USDC', address: USDC_ADDRESS, decimals: 6 }],
+                contractVersion: ContractVersion.V1,
+              },
+            ],
+          },
+        ],
+      });
+
+      await expect(
+        getDepositTx(client, {
+          vaultId: VAULT_ID,
+          amount: 2_000n,
+          depositMode: 'async',
+          receiver: RECEIVER,
+        })
+      ).rejects.toBeInstanceOf(UnsupportedFeatureError);
+
+      await expect(
+        getDepositTx(client, {
+          vaultId: VAULT_ID,
+          amount: 2_000n,
+          depositMode: 'sync',
+        })
+      ).rejects.toBeInstanceOf(UnsupportedFeatureError);
+
+      await expect(
+        getWithdrawTx(client, {
+          vaultId: VAULT_ID,
+          amount: 2_000n,
+          depositMode: 'sync',
+        })
+      ).rejects.toBeInstanceOf(UnsupportedFeatureError);
+    });
+  }, 60_000);
+
+  test('builds V2 provisioner transactions from SDK params', async () => {
+    const account = privateKeyToAccount(TEST_PRIVATE_KEY);
+    const publicClient = publicClientWithV2Reads({ allowance: 0n });
+    const walletClient = createWalletClient({ account, chain: base, transport: http() });
+
+    const client = new GauntletClient({
+      evmClients: { [base.id]: publicClient },
+      wallet: walletClient,
+    });
+    client.setManifest({
+      version: 'test',
+      vaults: [
+        {
+          vaultId: VAULT_ID,
+          name: 'Mock Aera V2',
+          protocol: 'aera',
+          strategy: 'test',
+          deployments: [
+            {
+              chain: 'evm',
+              chainId: base.id,
+              vaultAddress: AERA_VAULT_ADDRESS,
+              provisionerAddress: PROVISIONER_ADDRESS,
+              vaultType: 'multi-depositor',
+              depositMode: 'both',
+              supplyToken: [{ symbol: 'USDC', address: USDC_ADDRESS, decimals: 6 }],
+              contractVersion: ContractVersion.V2,
+            },
+          ],
+        },
+      ],
+    });
+
+    const v2SameReceiverDeposit = await getDepositTx(client, {
+      vaultId: VAULT_ID,
+      amount: 2_000n,
+      depositMode: 'async',
+    });
+    const sameReceiverRequestDeposit = v2SameReceiverDeposit.find(
+      (step) => step.tx.type === 'requestDeposit'
+    );
+    expect(sameReceiverRequestDeposit?.tx.args).toHaveLength(8);
+    expect(sameReceiverRequestDeposit?.tx.args[7]).toBe(account.address);
+
+    const v2Deposit = await getDepositTx(client, {
+      vaultId: VAULT_ID,
+      amount: 2_000n,
+      depositMode: 'async',
+      receiver: RECEIVER,
+    });
+    const requestDeposit = v2Deposit.find((step) => step.tx.type === 'requestDeposit');
+    expect(requestDeposit?.tx.args).toHaveLength(8);
+    expect(requestDeposit?.tx.args[7]).toBe(RECEIVER);
+
+    const v2SyncDeposit = await getDepositTx(client, {
+      vaultId: VAULT_ID,
+      amount: 2_000n,
+      depositMode: 'sync',
+      receiver: RECEIVER,
+    });
+    expect(v2SyncDeposit.map((step) => step.tx.type)).toEqual(['approve', 'deposit']);
+    const deposit = v2SyncDeposit.find((step) => step.tx.type === 'deposit');
+    expect(deposit?.tx.functionName).toBe('deposit');
+    expect(deposit?.tx.args).toHaveLength(4);
+    expect(deposit?.tx.args[0]).toBe(USDC_ADDRESS);
+    expect(deposit?.tx.args[1]).toBe(2_000n);
+    expect(deposit?.tx.args[3]).toBe(RECEIVER);
+
+    const v2AsyncRedeem = await getWithdrawTx(client, {
+      vaultId: VAULT_ID,
+      shares: 1_000n,
+      depositMode: 'async',
+      receiver: RECEIVER,
+    });
+    const requestRedeem = v2AsyncRedeem.find((step) => step.tx.type === 'requestRedeem');
+    expect(requestRedeem?.tx.args).toHaveLength(8);
+    expect(requestRedeem?.tx.args[7]).toBe(RECEIVER);
+  });
 });

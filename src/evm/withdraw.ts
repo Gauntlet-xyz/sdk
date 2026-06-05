@@ -11,6 +11,7 @@ import {
   InvalidSlippageBPSError,
 } from '../errors';
 import { resolveVault } from './vaults';
+import { DEFAULT_BPS, MAX_BPS } from '../constants';
 
 export type EvmWithdrawParams = {
   vaultId: string;
@@ -24,6 +25,10 @@ export type EvmWithdrawParams = {
   receiver?: Address;
   /** Slippage tolerance in basis points (e.g. 100 = 1%). Defaults to 100. */
   slippageBps?: number;
+  /** Solver tip passed to async Aera provisioner requests. Defaults to 0. */
+  solverTip?: bigint;
+  /** Maximum price age passed to async Aera provisioner requests. Defaults to 10 days. */
+  maxPriceAge?: bigint;
 } & (
   | { shares: bigint; amount?: never; entireAmount?: never }
   | { amount: bigint; shares?: never; entireAmount?: never }
@@ -70,7 +75,9 @@ export async function getWithdrawTx(
 ): Promise<PreparedTx[]> {
   if (
     params.slippageBps !== undefined &&
-    (!Number.isInteger(params.slippageBps) || params.slippageBps < 0 || params.slippageBps > 10000)
+    (!Number.isInteger(params.slippageBps) ||
+      params.slippageBps < 0 ||
+      params.slippageBps > Number(MAX_BPS))
   ) {
     throw new InvalidSlippageBPSError(params.slippageBps);
   }
@@ -115,7 +122,9 @@ export async function getWithdrawTx(
     async: modifiedDepositMode === 'async',
     asset: token,
     publicClient,
-    slippageBps: params.slippageBps,
+    slippageBps: params.slippageBps ?? DEFAULT_BPS,
+    solverTip: params.solverTip,
+    maxPriceAge: params.maxPriceAge,
     ...('shares' in params && params.shares != null ? { shares: params.shares } : {}),
     ...('amount' in params && params.amount != null ? { amount: params.amount } : {}),
     ...('entireAmount' in params && params.entireAmount ? { entireAmount: true as const } : {}),

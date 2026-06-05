@@ -2,10 +2,15 @@ import { parseAbi, type Address } from 'viem';
 import type { GauntletClient } from '../client';
 import type { EvmVaultDeployment } from './types';
 import { ChainMismatchError, UnsupportedProtocolError, VaultNotFoundError } from '../errors';
-import { getMultiDepositorVault, getPriceAndFeeCalculator } from './aeraContracts';
+import { getMultiDepositorVault, resolveContractVersion } from './aeraContracts';
+import * as provisionerV1 from './aeraContracts/v1';
+import * as provisionerV2 from './aeraContracts/v2';
+import { provisionerV2Abi } from './abis/provisionerV2';
+import { ContractVersion } from './types';
+import { BLOCKS_3_DAYS, CHAIN_NAMES, DEFAULT_BLOCKS_3_DAYS, LOG_PAGE_SIZE } from '../constants';
 
 // Inline as-const ABI items give viem full type inference for args and return types.
-const DEPOSIT_REQUESTED_ABI = [
+const DEPOSIT_REQUESTED_V1_ABI = [
   {
     type: 'event',
     name: 'DepositRequested',
@@ -23,7 +28,7 @@ const DEPOSIT_REQUESTED_ABI = [
   },
 ] as const;
 
-const REDEEM_REQUESTED_ABI = [
+const REDEEM_REQUESTED_V1_ABI = [
   {
     type: 'event',
     name: 'RedeemRequested',
@@ -41,8 +46,7 @@ const REDEEM_REQUESTED_ABI = [
   },
 ] as const;
 
-// ABI for provisioner state queries
-const provisionerStateAbi = parseAbi([
+const provisionerV1StateAbi = parseAbi([
   'function asyncDepositHashes(bytes32 asyncDepositHash) view returns (bool exists)',
   'function asyncRedeemHashes(bytes32 asyncRedeemHash) view returns (bool exists)',
 ]);
@@ -66,24 +70,22 @@ export interface UserCurrentBalance {
   pendingWithdraw: bigint;
 }
 
-const CHAIN_NAMES: Record<number, string> = {
-  1: 'ethereum',
-  8453: 'base',
-  42161: 'arbitrum',
-  10: 'optimism',
-};
+// V2 legacy wrapper calls can emit both receiver-aware and legacy events for one request.
+// Keep one row per request hash before state checks and summing pending amounts.
+function dedupeByRequestHash<TLog extends { args: { [key: string]: unknown } }>(
+  logs: TLog[],
+  hashKey: 'depositRequestHash' | 'redeemRequestHash'
+): TLog[] {
+  const seen = new Set<unknown>();
 
-// Approximate 3-day block lookback per chain based on avg block time
-const BLOCKS_3_DAYS: Record<number, bigint> = {
-  1: 21_600n,
-  8453: 129_600n,
-  42161: 1_036_800n,
-  10: 129_600n,
-};
-const DEFAULT_BLOCKS_3_DAYS = 129_600n;
-
-// Many RPC providers cap eth_getLogs to 10,000 blocks per request.
-const LOG_PAGE_SIZE = 9_999n;
+  return logs.filter((log) => {
+    const hash = log.args[hashKey];
+    // Drop malformed events and duplicates so one pending request cannot be counted twice.
+    if (hash == null || seen.has(hash)) return false;
+    seen.add(hash);
+    return true;
+  });
+}
 
 async function queryDeploymentBalance(
   client: GauntletClient,
@@ -93,6 +95,7 @@ async function queryDeploymentBalance(
   const publicClient = client.getPublicClient(deployment.chainId);
   const token = deployment.supplyToken[0];
   const provisionerAddress = deployment.provisionerAddress!;
+  const isV2 = (await resolveContractVersion(publicClient, deployment)) === ContractVersion.V2;
 
   const vaultContract = getMultiDepositorVault(publicClient, deployment.vaultAddress);
   const [units, feeCalculatorAddress] = await Promise.all([
@@ -100,7 +103,9 @@ async function queryDeploymentBalance(
     vaultContract.read.feeCalculator(),
   ]);
 
-  const feeCalc = getPriceAndFeeCalculator(publicClient, feeCalculatorAddress);
+  const feeCalc = isV2
+    ? provisionerV2.getPriceAndFeeCalculator(publicClient, feeCalculatorAddress)
+    : provisionerV1.getPriceAndFeeCalculator(publicClient, feeCalculatorAddress);
   const balance = await feeCalc.read.convertUnitsToToken([
     deployment.vaultAddress,
     token.address,
@@ -122,46 +127,64 @@ async function queryDeploymentBalance(
   const [depositPages, redeemPages] = await Promise.all([
     Promise.all(
       chunks.map(([from, to]) =>
-        publicClient.getContractEvents({
-          address: provisionerAddress,
-          abi: DEPOSIT_REQUESTED_ABI,
-          eventName: 'DepositRequested',
-          args: { user: address },
-          fromBlock: from,
-          toBlock: to,
-        })
+        isV2
+          ? publicClient.getContractEvents({
+              address: provisionerAddress,
+              abi: provisionerV2Abi,
+              eventName: 'DepositRequested',
+              args: { receiver: address },
+              fromBlock: from,
+              toBlock: to,
+            })
+          : publicClient.getContractEvents({
+              address: provisionerAddress,
+              abi: DEPOSIT_REQUESTED_V1_ABI,
+              eventName: 'DepositRequested',
+              args: { user: address },
+              fromBlock: from,
+              toBlock: to,
+            })
       )
     ),
     Promise.all(
       chunks.map(([from, to]) =>
-        publicClient.getContractEvents({
-          address: provisionerAddress,
-          abi: REDEEM_REQUESTED_ABI,
-          eventName: 'RedeemRequested',
-          args: { user: address },
-          fromBlock: from,
-          toBlock: to,
-        })
+        isV2
+          ? publicClient.getContractEvents({
+              address: provisionerAddress,
+              abi: provisionerV2Abi,
+              eventName: 'RedeemRequested',
+              args: { user: address },
+              fromBlock: from,
+              toBlock: to,
+            })
+          : publicClient.getContractEvents({
+              address: provisionerAddress,
+              abi: REDEEM_REQUESTED_V1_ABI,
+              eventName: 'RedeemRequested',
+              args: { user: address },
+              fromBlock: from,
+              toBlock: to,
+            })
       )
     ),
   ]);
 
-  const depositLogs = depositPages.flat().filter((log) => log.args.depositRequestHash != null);
-  const redeemLogs = redeemPages.flat().filter((log) => log.args.redeemRequestHash != null);
+  const depositLogs = dedupeByRequestHash(depositPages.flat(), 'depositRequestHash');
+  const redeemLogs = dedupeByRequestHash(redeemPages.flat(), 'redeemRequestHash');
 
   // Check which requests are still pending on-chain via a single multicall
   const pendingChecks = await publicClient.multicall({
     contracts: [
       ...depositLogs.map((log) => ({
         address: provisionerAddress,
-        abi: provisionerStateAbi,
-        functionName: 'asyncDepositHashes' as const,
+        abi: isV2 ? provisionerV2Abi : provisionerV1StateAbi,
+        functionName: isV2 ? ('asyncRequestHashes' as const) : ('asyncDepositHashes' as const),
         args: [log.args.depositRequestHash!] as const,
       })),
       ...redeemLogs.map((log) => ({
         address: provisionerAddress,
-        abi: provisionerStateAbi,
-        functionName: 'asyncRedeemHashes' as const,
+        abi: isV2 ? provisionerV2Abi : provisionerV1StateAbi,
+        functionName: isV2 ? ('asyncRequestHashes' as const) : ('asyncRedeemHashes' as const),
         args: [log.args.redeemRequestHash!] as const,
       })),
     ],

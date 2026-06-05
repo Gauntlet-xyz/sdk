@@ -12,6 +12,7 @@ import {
   parseUnits,
   parseEventLogs,
   type Address,
+  type PublicClient,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { GauntletClient } from '../src/client';
@@ -20,6 +21,7 @@ import { getWithdrawTx } from '../src/evm/withdraw';
 import { getUserCurrentBalance } from '../src/evm/userCurrentBalance';
 import { erc20Abi } from '../src/evm/abis/erc20';
 import { getMultiDepositorVault } from '@gauntletnetworks/aera-v3-ts-sdk/multiDepositorVault';
+import { ContractVersion } from '../src/evm/types';
 import {
   solveRequestsVaultTxRequest,
   type ProvisionerRequest,
@@ -37,6 +39,8 @@ const TEST_PRIVATE_KEY = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae78
 const USDC_ADDRESS: Address = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
 const AERA_VAULT_ADDRESS: Address = '0x000000000001CdB57E58Fa75Fe420a0f4D6640D5';
 const PROVISIONER_ADDRESS: Address = '0x18CF8d963E1a727F9bbF3AEffa0Bd04FB4dBdA07';
+const FEE_CALCULATOR_ADDRESS: Address = '0x69dD4D44eed6BbC33B8A0bdFe17897Ab9044372e';
+const RECEIVER: Address = '0x00000000000000000000000000000000deadbeef';
 const VAULT_ID = 'gtusda';
 const DEPOSIT_AMOUNT = parseUnits('100', 6); // 100 USDC
 const FORK_BLOCK = 44_182_978;
@@ -44,6 +48,69 @@ const FORK_BLOCK = 44_182_978;
 // FiatTokenV2.2 stores balances in a mapping at storage slot 9.
 function usdcBalanceSlot(address: Address): `0x${string}` {
   return keccak256(encodeAbiParameters([{ type: 'address' }, { type: 'uint256' }], [address, 9n]));
+}
+
+// The Base fork deployment used in this suite is V1, so it cannot emit V2 receiver-aware
+// request events or expose asyncRequestHashes. This narrow client drives only the reads
+// getUserCurrentBalance needs to exercise the V2 pending-balance branch and hash dedupe.
+function v2BalanceClient(address: Address): PublicClient {
+  const depositHash = `0x${'1'.padStart(64, '0')}` as const;
+  const redeemHash = `0x${'2'.padStart(64, '0')}` as const;
+
+  return {
+    readContract: async ({
+      functionName,
+      args,
+    }: {
+      functionName: string;
+      args?: readonly unknown[];
+    }) => {
+      switch (functionName) {
+        case 'balanceOf':
+          return 500n;
+        case 'feeCalculator':
+          return FEE_CALCULATOR_ADDRESS;
+        case 'convertUnitsToToken':
+          return BigInt(args?.[2] as bigint) * 2n;
+        default:
+          throw new Error(`Unexpected readContract call: ${functionName}`);
+      }
+    },
+    getBlockNumber: async () => 1_000n,
+    getContractEvents: async ({
+      eventName,
+      args,
+    }: {
+      eventName: string;
+      args: { user?: Address; receiver?: Address };
+    }) => {
+      if (eventName === 'DepositRequested' && args.receiver === address) {
+        return [
+          { args: { depositRequestHash: depositHash, tokensIn: 100n } },
+          { args: { depositRequestHash: depositHash, tokensIn: 100n } },
+        ];
+      }
+
+      if (eventName === 'RedeemRequested' && args.user === address) {
+        return [
+          { args: { redeemRequestHash: redeemHash, unitsIn: 300n } },
+          { args: { redeemRequestHash: redeemHash, unitsIn: 300n } },
+        ];
+      }
+
+      return [];
+    },
+    multicall: async ({ contracts }: { contracts: readonly unknown[] }) => {
+      expect(contracts).toHaveLength(2);
+      expect(
+        contracts.every(
+          (contract) =>
+            (contract as { functionName?: string }).functionName === 'asyncRequestHashes'
+        )
+      ).toBe(true);
+      return contracts.map(() => true);
+    },
+  } as unknown as PublicClient;
 }
 
 describe('getUserCurrentBalance', () => {
@@ -294,6 +361,50 @@ describe('getUserCurrentBalance', () => {
   }, 180_000);
 
   // ── Error cases (no fork needed) ─────────────────────────────────────────
+
+  test('tracks V2 receiver-aware pending requests through asyncRequestHashes', async () => {
+    const client = new GauntletClient({ evmClients: { [base.id]: v2BalanceClient(RECEIVER) } });
+    client.setManifest({
+      version: 'test',
+      vaults: [
+        {
+          vaultId: 'v2Vault',
+          name: 'V2 Vault',
+          protocol: 'aera',
+          strategy: 'test',
+          deployments: [
+            {
+              chain: 'evm',
+              chainId: base.id,
+              vaultAddress: AERA_VAULT_ADDRESS,
+              provisionerAddress: PROVISIONER_ADDRESS,
+              vaultType: 'multi-depositor',
+              depositMode: 'both',
+              supplyToken: [{ symbol: 'USDC', address: USDC_ADDRESS, decimals: 6 }],
+              contractVersion: ContractVersion.V2,
+            },
+          ],
+        },
+      ],
+    });
+
+    const result = await getUserCurrentBalance(client, {
+      vaultId: 'v2Vault',
+      address: RECEIVER,
+      chainId: base.id,
+    });
+
+    expect(result).toEqual([
+      {
+        chain: 'base',
+        token: USDC_ADDRESS,
+        decimals: 6,
+        pendingDeposit: 100n,
+        balance: 1_000n,
+        pendingWithdraw: 600n,
+      },
+    ]);
+  });
 
   test('throws VaultNotFoundError for unknown vaultId', async () => {
     const client = new GauntletClient({});

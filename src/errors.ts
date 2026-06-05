@@ -1,4 +1,5 @@
-import { ChainId } from './client';
+import type { ChainId } from './client';
+import { MAX_BPS } from './constants';
 
 export class GauntletSDKError extends Error {
   constructor(message: string) {
@@ -109,7 +110,7 @@ export class UnsupportedFeatureError extends GauntletSDKError {
 
   constructor(feature: string) {
     super(`Feature not supported: "${feature}"`);
-    this.name = 'UnimplementedFeatureError';
+    this.name = 'UnsupportedFeatureError';
     this.feature = feature;
   }
 }
@@ -124,11 +125,49 @@ export class UnitConversionError extends GauntletSDKError {
   }
 }
 
+export class StalePriceError extends GauntletSDKError {
+  readonly blockTimestamp: bigint;
+  readonly maxPriceAge: bigint;
+  readonly priceTimestamp: bigint;
+
+  constructor({
+    blockTimestamp,
+    maxPriceAge,
+    priceTimestamp,
+  }: {
+    blockTimestamp: bigint;
+    maxPriceAge: bigint;
+    priceTimestamp: bigint;
+  }) {
+    super(
+      `Price is stale: timestamp "${priceTimestamp}" with max age "${maxPriceAge}" is older than block timestamp "${blockTimestamp}"`
+    );
+    this.name = 'StalePriceError';
+    this.blockTimestamp = blockTimestamp;
+    this.maxPriceAge = maxPriceAge;
+    this.priceTimestamp = priceTimestamp;
+  }
+}
+
+export class InvalidSolverTipError extends GauntletSDKError {
+  readonly solverTip: bigint;
+  readonly availableAmount: bigint;
+
+  constructor(solverTip: bigint, availableAmount: bigint) {
+    super(
+      `Solver tip "${solverTip}" must be less than available token amount "${availableAmount}"`
+    );
+    this.name = 'InvalidSolverTipError';
+    this.solverTip = solverTip;
+    this.availableAmount = availableAmount;
+  }
+}
+
 export class InvalidSlippageBPSError extends GauntletSDKError {
   readonly slippage: number;
 
   constructor(slippage: number) {
-    super(`Slippage not in range of 10000-0; argumet passed: ${slippage}`);
+    super(`Slippage not in range of 0-${Number(MAX_BPS)}; argument passed: ${slippage}`);
     this.name = 'IncorrectArgument';
     this.slippage = slippage;
   }

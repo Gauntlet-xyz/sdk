@@ -4,8 +4,24 @@
  */
 import { type Address, type Client, type GetContractReturnType, getContract } from 'viem';
 import { multiDepositorVaultAbi } from './abis/multiDepositorVault';
-import { priceAndFeeCalculatorAbi } from './abis/priceAndFeeCalculator';
-import { provisionerAbi } from './abis/provisioner';
+import { provisionerV2Abi } from './abis/provisionerV2';
+import { MAX_BPS } from '../constants';
+import { ContractVersion, type EvmVaultDeployment } from './types';
+
+const contractVersionCache = new Map<string, ContractVersion>();
+
+export function applySlippageDown(amount: bigint, slippageBps: number): bigint {
+  return (amount * (MAX_BPS - BigInt(slippageBps))) / MAX_BPS;
+}
+
+export function applySlippageUp(amount: bigint, slippageBps: number): bigint {
+  return (amount * (MAX_BPS + BigInt(slippageBps)) + MAX_BPS - 1n) / MAX_BPS;
+}
+
+function contractVersionCacheKey(vault: EvmVaultDeployment): string | undefined {
+  if (!vault.provisionerAddress) return undefined;
+  return `${vault.chainId}:${vault.provisionerAddress.toLowerCase()}`;
+}
 
 export type MultiDepositorVaultContract<T extends Client> = GetContractReturnType<
   typeof multiDepositorVaultAbi,
@@ -24,59 +40,38 @@ export function getMultiDepositorVault<T extends Client>(
   });
 }
 
-export type PriceAndFeeCalculatorContract<T extends Client> = GetContractReturnType<
-  typeof priceAndFeeCalculatorAbi,
-  T,
-  Address
->;
-
-export function getPriceAndFeeCalculator<T extends Client>(
+export async function resolveContractVersion<T extends Client>(
   client: T,
-  address: Address
-): PriceAndFeeCalculatorContract<T> {
-  return getContract({
-    address,
-    abi: priceAndFeeCalculatorAbi,
-    client,
-  });
-}
+  vault: EvmVaultDeployment
+): Promise<ContractVersion> {
+  if (!vault.provisionerAddress) return ContractVersion.V1;
 
-export function requestDepositTxRequest(
-  provisioner: Address,
-  token: Address,
-  tokensIn: bigint,
-  minUnitsOut: bigint,
-  solverTip: bigint,
-  deadline: bigint,
-  maxPriceAge: bigint,
-  isFixedPrice: boolean,
-  account: Address
-) {
-  return {
-    address: provisioner,
-    abi: provisionerAbi,
-    functionName: 'requestDeposit' as const,
-    args: [token, tokensIn, minUnitsOut, solverTip, deadline, maxPriceAge, isFixedPrice] as const,
-    account,
-  };
-}
+  if (vault.contractVersion) {
+    return vault.contractVersion;
+  }
 
-export function requestRedeemTxRequest(
-  provisioner: Address,
-  token: Address,
-  unitsIn: bigint,
-  minTokenOut: bigint,
-  solverTip: bigint,
-  deadline: bigint,
-  maxPriceAge: bigint,
-  isFixedPrice: boolean,
-  account: Address
-) {
-  return {
-    address: provisioner,
-    abi: provisionerAbi,
-    functionName: 'requestRedeem' as const,
-    args: [token, unitsIn, minTokenOut, solverTip, deadline, maxPriceAge, isFixedPrice] as const,
-    account,
-  };
+  const cacheKey = contractVersionCacheKey(vault);
+  if (cacheKey) {
+    const cached = contractVersionCache.get(cacheKey);
+    if (cached) return cached;
+  }
+
+  try {
+    const contract = getContract({
+      address: vault.provisionerAddress,
+      abi: provisionerV2Abi,
+      client,
+    });
+
+    const versionString = await contract.read.version();
+    const version = versionString.startsWith('2.') ? ContractVersion.V2 : ContractVersion.V1;
+
+    if (cacheKey) {
+      contractVersionCache.set(cacheKey, version);
+    }
+
+    return version;
+  } catch {
+    return ContractVersion.V1;
+  }
 }

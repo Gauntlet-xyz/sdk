@@ -1,5 +1,6 @@
 export { GauntletClient, AttributionMode } from './client';
 export type { GauntletClientConfig } from './client';
+export { ContractVersion } from './evm/types';
 
 export type {
   VaultInfo,
@@ -11,11 +12,13 @@ export type {
 export type { VaultFilter } from './evm/vaults';
 
 export { getDepositTx } from './evm/deposit';
+export { getDepositReceiverApprovalTx } from './evm/depositReceiverApproval';
 export { getWithdrawTx } from './evm/withdraw';
 export { getUserCurrentBalance } from './evm/userCurrentBalance';
 export { getVaults, VaultId } from './evm/vaults';
 
 export type { EvmDepositParams } from './evm/deposit';
+export type { EvmDepositReceiverApprovalParams } from './evm/depositReceiverApproval';
 export type { EvmWithdrawParams } from './evm/withdraw';
 export type { EvmTxStep } from './evm/adapters/types';
 export type { UserCurrentBalanceParams, UserCurrentBalance } from './evm/userCurrentBalance';
@@ -30,7 +33,10 @@ export {
   RpcNotConfiguredError,
   AccountRequiredError,
   UnsupportedProtocolError,
+  UnsupportedFeatureError,
   InvalidWithdrawParamsError,
   UnimplementedFeatureError,
   UnitConversionError,
+  StalePriceError,
+  InvalidSolverTipError,
 } from './errors';

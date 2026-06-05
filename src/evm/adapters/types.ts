@@ -2,7 +2,14 @@ import type { Abi, Address, Hex, PublicClient } from 'viem';
 import type { TokenInfo, VaultDeployment } from '../types';
 
 export interface EvmTxStep<TAbi extends Abi = Abi, TFunctionName extends string = string> {
-  type: 'approve' | 'deposit' | 'requestDeposit' | 'redeem' | 'requestRedeem' | 'withdraw';
+  type:
+    | 'approve'
+    | 'deposit'
+    | 'requestDeposit'
+    | 'redeem'
+    | 'requestRedeem'
+    | 'setDepositReceiverApproval'
+    | 'withdraw';
   address: Address;
   abi: TAbi;
   functionName: TFunctionName;
@@ -24,6 +31,10 @@ export interface AdapterDepositParams {
   publicClient: PublicClient;
   /** Slippage tolerance in basis points (e.g. 100 = 1%). Defaults to 100. */
   slippageBps?: number;
+  /** Solver tip passed to async Aera provisioner requests. Defaults to 0. */
+  solverTip?: bigint;
+  /** Maximum price age passed to async Aera provisioner requests. Defaults to 10 days. */
+  maxPriceAge?: bigint;
 }
 
 export type AdapterWithdrawParams = {
@@ -35,6 +46,10 @@ export type AdapterWithdrawParams = {
   publicClient: PublicClient;
   /** Slippage tolerance in basis points (e.g. 100 = 1%). Defaults to 100. */
   slippageBps?: number;
+  /** Solver tip passed to async Aera provisioner requests. Defaults to 0. */
+  solverTip?: bigint;
+  /** Maximum price age passed to async Aera provisioner requests. Defaults to 10 days. */
+  maxPriceAge?: bigint;
 } & (
   | { shares: bigint; amount?: never; entireAmount?: never }
   | { amount: bigint; shares?: never; entireAmount?: never }

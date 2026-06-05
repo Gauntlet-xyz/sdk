@@ -55,17 +55,31 @@ export async function setupAnvil(
   const anvil = createAnvil({
     forkUrl,
     forkBlockNumber: fork_block_number !== undefined ? BigInt(fork_block_number) : undefined,
+    port: 0,
   });
 
   await anvil.start();
 
-  const transport = http(`http://127.0.0.1:${anvil.port}`);
+  const selectedPort = getSelectedAnvilPort(anvil);
+  const transport = http(`http://127.0.0.1:${selectedPort}`);
 
   const testClient = createTestClient({ chain, mode: 'anvil', transport })
     .extend(walletActions)
     .extend(publicActions);
 
-  return { testClient, anvil, chain };
+  return { testClient, anvil: { ...anvil, port: selectedPort }, chain };
+}
+
+function getSelectedAnvilPort(anvil: Anvil): number {
+  if (anvil.port !== 0) return anvil.port;
+
+  const listeningLine = anvil.logs.find((log) => log.includes('Listening on'));
+  const selectedPort = listeningLine?.match(/Listening on .*:(\d+)/)?.[1];
+  if (selectedPort === undefined) {
+    throw new Error('Unable to determine selected Anvil port from startup logs');
+  }
+
+  return Number(selectedPort);
 }
 
 export async function withAnvil<T>(

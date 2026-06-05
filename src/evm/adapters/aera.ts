@@ -1,14 +1,16 @@
 import { erc20Abi } from '../abis/erc20';
 import {
-  requestDepositTxRequest,
-  requestRedeemTxRequest,
   getMultiDepositorVault,
-  getPriceAndFeeCalculator,
+  applySlippageDown,
+  applySlippageUp,
+  resolveContractVersion,
 } from '../aeraContracts';
+import * as provisionerV1 from '../aeraContracts/v1';
+import * as provisionerV2 from '../aeraContracts/v2';
 import {
   InvalidWithdrawParamsError,
+  InvalidSolverTipError,
   UnimplementedFeatureError,
-  UnitConversionError,
   UnsupportedFeatureError,
 } from '../../errors';
 import type {
@@ -19,44 +21,50 @@ import type {
   AllowanceParams,
   ApprovalParams,
 } from './types';
-import { PublicClient, type Address } from 'viem';
+import type { Address, PublicClient } from 'viem';
 import { multiDepositorVaultAbi } from '../abis/multiDepositorVault';
+import {
+  DEFAULT_BPS,
+  DAY,
+  DEFAULT_MAX_PRICE_AGE,
+  DEFAULT_REQUEST_DEADLINE_BUFFER,
+  DEFAULT_SOLVER_TIP,
+} from '../../constants';
+import { ContractVersion } from '../types';
 
-const SECOND = 1;
-const MINUTE = SECOND * 60;
-const HOUR = MINUTE * 60;
-const DAY = HOUR * 24;
-
-export const getAeraV3VaultUnits = async (
+export const convertTokenAmountToUnits = async (
   publicClient: PublicClient,
-  tokenUnits: bigint,
+  tokenAmount: bigint,
   vaultAddress: Address,
-  tokenAddress: Address
+  tokenAddress: Address,
+  contractVersion: ContractVersion = ContractVersion.V1
 ) => {
   const vaultContract = getMultiDepositorVault(publicClient, vaultAddress);
-
   if (vaultContract === undefined) return;
 
   const calculatorAddress = await vaultContract.read.feeCalculator();
-
   if (!calculatorAddress) return;
 
-  const calculatorContract = getPriceAndFeeCalculator(publicClient, calculatorAddress);
+  const calculatorContract =
+    contractVersion === ContractVersion.V2
+      ? provisionerV2.getPriceAndFeeCalculator(publicClient, calculatorAddress)
+      : provisionerV1.getPriceAndFeeCalculator(publicClient, calculatorAddress);
 
-  const vaultUnits = await calculatorContract.read.convertTokenToUnits([
+  const unitsAmount = await calculatorContract.read.convertTokenToUnits([
     vaultAddress,
     tokenAddress,
-    tokenUnits,
+    tokenAmount,
   ]);
 
-  return vaultUnits;
+  return unitsAmount;
 };
 
-export const getAeraV3TokenUnits = async (
+export const convertUnitsToTokenAmount = async (
   publicClient: PublicClient,
-  vaultUnits: bigint,
+  unitsAmount: bigint,
   vaultAddress: Address,
-  tokenAddress: Address
+  tokenAddress: Address,
+  contractVersion: ContractVersion = ContractVersion.V1
 ) => {
   const vaultContract = getMultiDepositorVault(publicClient, vaultAddress);
   if (vaultContract === undefined) return;
@@ -64,18 +72,95 @@ export const getAeraV3TokenUnits = async (
   const calculatorAddress = await vaultContract.read.feeCalculator();
   if (!calculatorAddress) return;
 
-  const calculatorContract = getPriceAndFeeCalculator(publicClient, calculatorAddress);
+  const calculatorContract =
+    contractVersion === ContractVersion.V2
+      ? provisionerV2.getPriceAndFeeCalculator(publicClient, calculatorAddress)
+      : provisionerV1.getPriceAndFeeCalculator(publicClient, calculatorAddress);
 
-  return calculatorContract.read.convertUnitsToToken([vaultAddress, tokenAddress, vaultUnits]);
+  return calculatorContract.read.convertUnitsToToken([vaultAddress, tokenAddress, unitsAmount]);
 };
+
+function subtractSolverTip(tokenAmount: bigint, solverTip: bigint): bigint {
+  if (solverTip === 0n) return tokenAmount;
+  if (solverTip >= tokenAmount) {
+    throw new InvalidSolverTipError(solverTip, tokenAmount);
+  }
+
+  return tokenAmount - solverTip;
+}
+
+function getRequestDeadline(expirationDays?: number): bigint {
+  const deadlineBuffer =
+    expirationDays === undefined ? DEFAULT_REQUEST_DEADLINE_BUFFER : DAY * expirationDays;
+  return BigInt(Math.ceil(new Date().getTime() / 1000) + deadlineBuffer);
+}
+
+async function getDepositUnitsOut({
+  publicClient,
+  contractVersion,
+  provisioner,
+  vault,
+  token,
+  tokensIn,
+  isAsync,
+}: {
+  publicClient: PublicClient;
+  contractVersion: ContractVersion;
+  provisioner: Address;
+  vault: Address;
+  token: Address;
+  tokensIn: bigint;
+  isAsync: boolean;
+}): Promise<bigint> {
+  if (contractVersion === ContractVersion.V2) {
+    return isAsync
+      ? provisionerV2.getAsyncDepositUnitsOut(publicClient, provisioner, vault, token, tokensIn)
+      : provisionerV2.getSyncDepositUnitsOut(publicClient, provisioner, vault, token, tokensIn);
+  }
+
+  return provisionerV1.getAsyncDepositUnitsOut(publicClient, provisioner, vault, token, tokensIn);
+}
+
+function getAsyncRedeemTokenOut(
+  publicClient: PublicClient,
+  contractVersion: ContractVersion,
+  provisioner: Address,
+  vault: Address,
+  token: Address,
+  unitsIn: bigint
+): Promise<bigint> {
+  return contractVersion === ContractVersion.V2
+    ? provisionerV2.getAsyncRedeemTokenOut(publicClient, provisioner, vault, token, unitsIn)
+    : provisionerV1.getAsyncRedeemTokenOut(publicClient, provisioner, vault, token, unitsIn);
+}
+
+function getAsyncWithdrawUnitsIn(
+  publicClient: PublicClient,
+  contractVersion: ContractVersion,
+  provisioner: Address,
+  vault: Address,
+  token: Address,
+  tokensOut: bigint
+): Promise<bigint> {
+  return contractVersion === ContractVersion.V2
+    ? provisionerV2.getAsyncWithdrawUnitsIn(publicClient, provisioner, vault, token, tokensOut)
+    : provisionerV1.getAsyncWithdrawUnitsIn(publicClient, provisioner, vault, token, tokensOut);
+}
 
 export const aeraAdapter: EvmProtocolAdapter = {
   async buildDeposit(params: AdapterDepositParams): Promise<EvmTxStep[]> {
-    const { vault, receiver, amount, account, publicClient, asset, async: isAsync, slippageBps = 100 } = params;
-
-    if (receiver !== account) {
-      throw new UnsupportedFeatureError('Aera: separate receiver address');
-    }
+    const {
+      vault,
+      receiver,
+      amount,
+      account,
+      publicClient,
+      asset,
+      async: isAsync,
+      slippageBps = DEFAULT_BPS,
+      solverTip = DEFAULT_SOLVER_TIP,
+      maxPriceAge = DEFAULT_MAX_PRICE_AGE,
+    } = params;
 
     if (!vault.provisionerAddress) {
       // Not implemented because untested and clients won't need in V1
@@ -90,32 +175,72 @@ export const aeraAdapter: EvmProtocolAdapter = {
       ];*/
     }
 
+    const contractVersion = await resolveContractVersion(publicClient, vault);
+    const isContractV2 = contractVersion === ContractVersion.V2;
+    if (receiver !== account && !isContractV2) {
+      throw new UnsupportedFeatureError('Aera: separate receiver address on V1');
+    }
+
+    if (!isAsync && !isContractV2) {
+      throw new UnsupportedFeatureError('Aera: sync operations on V1');
+    }
+
+    const tokensInForUnits = isAsync ? subtractSolverTip(amount, solverTip) : amount;
+    const vaultUnits = await getDepositUnitsOut({
+      publicClient,
+      contractVersion,
+      provisioner: vault.provisionerAddress,
+      vault: vault.vaultAddress,
+      token: asset.address,
+      tokensIn: tokensInForUnits,
+      isAsync,
+    });
+
+    const minUnitsOut = applySlippageDown(vaultUnits, slippageBps);
+
     if (isAsync) {
-      const vaultUnits = await getAeraV3VaultUnits(
-        publicClient,
-        amount,
-        vault.vaultAddress,
-        asset.address
-      );
-
-      if (vaultUnits === undefined) {
-        throw new UnitConversionError(vault.vaultAddress);
-      }
-
-      const deadline = BigInt(Math.ceil(new Date().getTime() / 1000) + DAY * (vault.expirationDays ?? 3));
-      // Request deposit
+      const deadline = getRequestDeadline(vault.expirationDays);
       return [
         {
           type: 'requestDeposit',
-          ...requestDepositTxRequest(
+          ...(isContractV2
+            ? provisionerV2.requestDepositTxRequest(
+                vault.provisionerAddress,
+                asset.address,
+                amount,
+                minUnitsOut,
+                solverTip,
+                deadline,
+                maxPriceAge,
+                false,
+                receiver,
+                account
+              )
+            : provisionerV1.requestDepositTxRequest(
+                vault.provisionerAddress,
+                asset.address,
+                amount,
+                minUnitsOut,
+                solverTip,
+                deadline,
+                maxPriceAge,
+                false,
+                account
+              )),
+        },
+      ];
+    }
+
+    if (isContractV2) {
+      return [
+        {
+          type: 'deposit',
+          ...provisionerV2.depositTxRequest(
             vault.provisionerAddress,
             asset.address,
             amount,
-            (vaultUnits * BigInt(10000 - slippageBps)) / 10000n, // minUnitsOut
-            0n, // solvertip
-            deadline,
-            BigInt(DAY * 10),
-            false,
+            minUnitsOut,
+            receiver,
             account
           ),
         },
@@ -126,40 +251,24 @@ export const aeraAdapter: EvmProtocolAdapter = {
   },
 
   async buildWithdraw(params: AdapterWithdrawParams): Promise<EvmTxStep[]> {
-    const { vault, receiver, account, asset, publicClient, async: isAsync, slippageBps = 100 } = params;
+    const {
+      vault,
+      receiver,
+      account,
+      asset,
+      publicClient,
+      async: isAsync,
+      slippageBps = DEFAULT_BPS,
+      solverTip = DEFAULT_SOLVER_TIP,
+      maxPriceAge = DEFAULT_MAX_PRICE_AGE,
+    } = params;
 
-    if (receiver !== account) {
-      throw new UnsupportedFeatureError('Aera: separate receiver address');
-    }
-
-    let shares: bigint;
-    let amount: bigint | undefined;
-
-    if ('entireAmount' in params && params.entireAmount) {
-      shares = await publicClient.readContract({
-        address: vault.vaultAddress,
-        abi: multiDepositorVaultAbi,
-        functionName: 'balanceOf',
-        args: [account],
-      });
-      amount = await getAeraV3TokenUnits(publicClient, shares, vault.vaultAddress, asset.address);
-    } else if ('amount' in params && params.amount != null) {
-      const tempShares = await getAeraV3VaultUnits(
-        publicClient,
-        params.amount,
-        vault.vaultAddress,
-        asset.address
-      );
-      amount = params.amount;
-      if (tempShares === undefined) {
-        throw new UnitConversionError(vault.vaultAddress);
-      }
-      shares = tempShares;
-    } else if ('shares' in params && params.shares != null) {
-      shares = params.shares;
-      amount = await getAeraV3TokenUnits(publicClient, shares, vault.vaultAddress, asset.address);
-    } else {
-      throw new InvalidWithdrawParamsError();
+    const contractVersion = vault.provisionerAddress
+      ? await resolveContractVersion(publicClient, vault)
+      : ContractVersion.V1;
+    const isContractV2 = contractVersion === ContractVersion.V2;
+    if (receiver !== account && !isContractV2) {
+      throw new UnsupportedFeatureError('Aera: separate receiver address on V1');
     }
 
     if (!vault.provisionerAddress) {
@@ -180,53 +289,192 @@ export const aeraAdapter: EvmProtocolAdapter = {
       ];*/
     }
 
-    const { sufficient } = await this.checkAllowance({
-      publicClient,
-      token: vault.vaultAddress,
-      owner: account,
-      spender: vault.provisionerAddress,
-      amount: shares,
-    });
+    if (!isAsync && !isContractV2) {
+      throw new UnsupportedFeatureError('Aera: sync operations on V1');
+    }
+
+    const isV2ExactTokenWithdraw =
+      isContractV2 && !isAsync && 'amount' in params && params.amount != null;
+    let minTokenOut: bigint;
+    let maxUnitsIn: bigint;
+    let shares: bigint | undefined;
+
+    if (isContractV2 && !isAsync) {
+      if ('entireAmount' in params && params.entireAmount) {
+        shares = await publicClient.readContract({
+          address: vault.vaultAddress,
+          abi: multiDepositorVaultAbi,
+          functionName: 'balanceOf',
+          args: [account],
+        });
+      } else if ('shares' in params && params.shares != null) {
+        shares = params.shares;
+      } else if (!('amount' in params && params.amount != null)) {
+        throw new InvalidWithdrawParamsError();
+      }
+
+      if (isV2ExactTokenWithdraw) {
+        minTokenOut = applySlippageDown(params.amount, slippageBps);
+        maxUnitsIn = applySlippageUp(
+          await provisionerV2.getSyncWithdrawUnitsIn(
+            publicClient,
+            vault.provisionerAddress,
+            vault.vaultAddress,
+            asset.address,
+            params.amount
+          ),
+          slippageBps
+        );
+      } else {
+        if (shares === undefined) {
+          throw new InvalidWithdrawParamsError();
+        }
+
+        minTokenOut = applySlippageDown(
+          await provisionerV2.getSyncRedeemTokenOut(
+            publicClient,
+            vault.provisionerAddress,
+            vault.vaultAddress,
+            asset.address,
+            shares
+          ),
+          slippageBps
+        );
+        maxUnitsIn = applySlippageUp(shares, slippageBps);
+      }
+    } else {
+      if ('entireAmount' in params && params.entireAmount) {
+        shares = await publicClient.readContract({
+          address: vault.vaultAddress,
+          abi: multiDepositorVaultAbi,
+          functionName: 'balanceOf',
+          args: [account],
+        });
+      } else if ('amount' in params && params.amount != null) {
+        shares = await getAsyncWithdrawUnitsIn(
+          publicClient,
+          contractVersion,
+          vault.provisionerAddress,
+          vault.vaultAddress,
+          asset.address,
+          params.amount + solverTip
+        );
+      } else if ('shares' in params && params.shares != null) {
+        shares = params.shares;
+      } else {
+        throw new InvalidWithdrawParamsError();
+      }
+
+      const tokenOutBeforeTip = await getAsyncRedeemTokenOut(
+        publicClient,
+        contractVersion,
+        vault.provisionerAddress,
+        vault.vaultAddress,
+        asset.address,
+        shares
+      );
+      minTokenOut = applySlippageDown(subtractSolverTip(tokenOutBeforeTip, solverTip), slippageBps);
+      maxUnitsIn = shares;
+    }
 
     const steps: EvmTxStep[] = [];
 
-    if (!sufficient) {
-      steps.push(
-        this.buildApproval({
-          token: vault.vaultAddress,
-          spender: vault.provisionerAddress,
-          amount: shares,
-          account,
-        })
-      );
-    }
-
     if (isAsync) {
-      // Request redeem
-      const deadline = BigInt(Math.ceil(new Date().getTime() / 1000) + DAY * (vault.expirationDays ?? 3));
-      if (amount === undefined) {
-        throw new UnitConversionError(vault.vaultAddress);
+      if (shares === undefined) {
+        throw new InvalidWithdrawParamsError();
       }
+
+      // Only async requestRedeem needs a vault unit allowance: the provisioner
+      // pulls units from the user. V2 sync redeem/withdraw exits through the
+      // vault and burns the caller's units directly, so no approval is needed.
+      const { sufficient } = await this.checkAllowance({
+        publicClient,
+        token: vault.vaultAddress,
+        owner: account,
+        spender: vault.provisionerAddress,
+        amount: shares,
+      });
+
+      if (!sufficient) {
+        steps.push(
+          this.buildApproval({
+            token: vault.vaultAddress,
+            spender: vault.provisionerAddress,
+            amount: shares,
+            account,
+          })
+        );
+      }
+
+      const deadline = getRequestDeadline(vault.expirationDays);
+
       return [
         ...steps,
         {
           type: 'requestRedeem',
-          ...requestRedeemTxRequest(
+          ...(isContractV2
+            ? provisionerV2.requestRedeemTxRequest(
+                vault.provisionerAddress,
+                asset.address,
+                shares,
+                minTokenOut,
+                solverTip,
+                deadline,
+                maxPriceAge,
+                false,
+                receiver,
+                account
+              )
+            : provisionerV1.requestRedeemTxRequest(
+                vault.provisionerAddress,
+                asset.address,
+                shares,
+                minTokenOut,
+                solverTip,
+                deadline,
+                maxPriceAge,
+                false,
+                account
+              )),
+        },
+      ];
+    }
+
+    if ('amount' in params && params.amount != null) {
+      return [
+        ...steps,
+        {
+          type: 'withdraw',
+          ...provisionerV2.withdrawTxRequest(
             vault.provisionerAddress,
             asset.address,
-            shares,
-            (amount * BigInt(10000 - slippageBps)) / 10000n, // minUnitsOut
-            0n, // solvertip
-            deadline,
-            BigInt(DAY * 10),
-            false,
+            params.amount,
+            maxUnitsIn,
+            receiver,
             account
           ),
         },
       ];
     }
 
-    throw new UnimplementedFeatureError('Aera Sync Operations');
+    if (shares === undefined) {
+      throw new InvalidWithdrawParamsError();
+    }
+
+    return [
+      ...steps,
+      {
+        type: 'redeem',
+        ...provisionerV2.redeemTxRequest(
+          vault.provisionerAddress,
+          asset.address,
+          shares,
+          minTokenOut,
+          receiver,
+          account
+        ),
+      },
+    ];
   },
 
   async checkAllowance(params: AllowanceParams) {
