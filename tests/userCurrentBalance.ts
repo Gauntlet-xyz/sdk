@@ -21,7 +21,6 @@ import { getWithdrawTx } from '../src/evm/withdraw';
 import { getUserCurrentBalance } from '../src/evm/userCurrentBalance';
 import { erc20Abi } from '../src/evm/abis/erc20';
 import { getMultiDepositorVault } from '@gauntletnetworks/aera-v3-ts-sdk/multiDepositorVault';
-import { ContractVersion } from '../src/evm/types';
 import {
   solveRequestsVaultTxRequest,
   type ProvisionerRequest,
@@ -62,10 +61,15 @@ function v2BalanceClient(address: Address): PublicClient {
       functionName,
       args,
     }: {
+      address?: Address;
       functionName: string;
       args?: readonly unknown[];
     }) => {
       switch (functionName) {
+        case 'provisioner':
+          return PROVISIONER_ADDRESS;
+        case 'version':
+          return '2.0';
         case 'balanceOf':
           return 500n;
         case 'feeCalculator':
@@ -377,11 +381,8 @@ describe('getUserCurrentBalance', () => {
               chain: 'evm',
               chainId: base.id,
               vaultAddress: AERA_VAULT_ADDRESS,
-              provisionerAddress: PROVISIONER_ADDRESS,
               vaultType: 'multi-depositor',
-              depositMode: 'both',
               supplyToken: [{ symbol: 'USDC', address: USDC_ADDRESS, decimals: 6 }],
-              contractVersion: ContractVersion.V2,
             },
           ],
         },

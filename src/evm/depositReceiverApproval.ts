@@ -3,7 +3,7 @@ import type { GauntletClient } from '../client';
 import type { PreparedTx } from '../attribution';
 import { encodeTransactionWithAttribution } from '../attribution';
 import { AccountRequiredError, UnsupportedFeatureError, VaultNotFoundError } from '../errors';
-import { resolveContractVersion } from './aeraContracts';
+import { resolveAeraRuntimeContracts } from './aeraContracts';
 import * as provisionerV2 from './aeraContracts/v2';
 import { ContractVersion } from './types';
 import { resolveVault } from './vaults';
@@ -33,20 +33,16 @@ export async function getDepositReceiverApprovalTx(
   if (!receiver) throw new AccountRequiredError();
 
   const { vault } = resolved;
-  if (!vault.provisionerAddress) {
-    throw new UnsupportedFeatureError('Aera: deposit receiver approval without provisioner');
-  }
-
   const publicClient = client.getPublicClient(chainId);
-  const isV2 = (await resolveContractVersion(publicClient, vault)) === ContractVersion.V2;
-  if (!isV2) {
+  const runtime = await resolveAeraRuntimeContracts(publicClient, vault);
+  if (runtime.provisioner.version !== ContractVersion.V2) {
     throw new UnsupportedFeatureError('Aera: deposit receiver approval on V1');
   }
 
   return encodeTransactionWithAttribution(client, {
     type: 'setDepositReceiverApproval',
     ...provisionerV2.setDepositReceiverApprovalTxRequest(
-      vault.provisionerAddress,
+      runtime.provisioner.address,
       params.depositor,
       params.approved ?? true,
       receiver

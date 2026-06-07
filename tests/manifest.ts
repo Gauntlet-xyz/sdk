@@ -7,6 +7,7 @@ import {
   isAddress,
   type Address,
   type Chain,
+  zeroAddress,
 } from 'viem';
 import { arbitrum, base, mainnet, optimism, unichain } from 'viem/chains';
 import vaultManifest from '../manifest/vaults.json';
@@ -21,10 +22,17 @@ const assetAbi = [
   },
 ] as const;
 
-const provisionerAbi = [
+const aeraVaultAbi = [
   {
     type: 'function',
     name: 'provisioner',
+    inputs: [],
+    outputs: [{ name: '', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'feeCalculator',
     inputs: [],
     outputs: [{ name: '', type: 'address' }],
     stateMutability: 'view',
@@ -69,7 +77,7 @@ interface VaultEntry {
   vaultId: string;
   protocol: string;
   vaultAddress: Address;
-  provisionerAddress?: Address;
+  vaultType: string;
   supplyToken: { address: Address; symbol: string; decimals: number }[];
 }
 
@@ -83,7 +91,7 @@ function groupByChain(): Map<number, VaultEntry[]> {
         vaultId: vault.vaultId,
         protocol: vault.protocol,
         vaultAddress: d.vaultAddress as Address,
-        provisionerAddress: d.provisionerAddress as Address | undefined,
+        vaultType: d.vaultType,
         supplyToken: d.supplyToken as { address: Address; symbol: string; decimals: number }[],
       });
       byChain.set(d.chainId, entries);
@@ -102,13 +110,6 @@ describe('vault manifest', () => {
           `${vault.vaultId} chain ${d.chainId}: invalid vaultAddress "${d.vaultAddress}"`
         ).toBe(true);
 
-        if (d.provisionerAddress) {
-          expect(
-            isAddress(d.provisionerAddress),
-            `${vault.vaultId} chain ${d.chainId}: invalid provisionerAddress "${d.provisionerAddress}"`
-          ).toBe(true);
-        }
-
         for (const token of d.supplyToken) {
           expect(
             isAddress(token.address),
@@ -119,23 +120,29 @@ describe('vault manifest', () => {
     }
   });
 
+  test('runtime Aera contract fields are not hard-coded', () => {
+    for (const vault of vaultManifest.vaults) {
+      for (const d of vault.deployments) {
+        expect(
+          'provisionerAddress' in d,
+          `${vault.vaultId} chain ${d.chainId}: provisionerAddress must be read on-chain`
+        ).toBe(false);
+        expect(
+          'contractVersion' in d,
+          `${vault.vaultId} chain ${d.chainId}: contractVersion must be detected on-chain`
+        ).toBe(false);
+        expect(
+          'depositMode' in d,
+          `${vault.vaultId} chain ${d.chainId}: depositMode must be read from token details`
+        ).toBe(false);
+      }
+    }
+  });
+
   test('no duplicate vaultIds', () => {
     const ids = vaultManifest.vaults.map((v) => v.vaultId);
     const duplicates = ids.filter((id, i) => ids.indexOf(id) !== i);
     expect(duplicates, `duplicate vaultIds: ${duplicates.join(', ')}`).toHaveLength(0);
-  });
-
-  test('aera multi-depositor vaults have a provisionerAddress', () => {
-    for (const vault of vaultManifest.vaults) {
-      if (vault.protocol !== 'aera') continue;
-      for (const d of vault.deployments) {
-        if (d.chain !== 'evm' || d.vaultType !== 'multi-depositor') continue;
-        expect(
-          d.provisionerAddress,
-          `${vault.vaultId} chain ${d.chainId}: multi-depositor aera vault is missing provisionerAddress`
-        ).toBeTruthy();
-      }
-    }
   });
 
   const deploymentsByChain = groupByChain();
@@ -158,7 +165,7 @@ describe('vault manifest', () => {
         const client = createPublicClient({ chain, transport: http(rpcUrl!) });
 
         await Promise.all(
-          entries.map(async ({ vaultId, protocol, vaultAddress, provisionerAddress, supplyToken }) => {
+          entries.map(async ({ vaultId, protocol, vaultAddress, vaultType, supplyToken }) => {
             // Vault must be a deployed contract, not an EOA
             const bytecode = await client.getBytecode({ address: vaultAddress });
             expect(
@@ -179,17 +186,27 @@ describe('vault manifest', () => {
               ).toBe(getAddress(supplyToken[0].address));
             }
 
-            if (protocol === 'aera' && provisionerAddress) {
-              // Aera vault — provisioner() must match the declared provisioner address
-              const onChainProvisioner = await client.readContract({
-                address: vaultAddress,
-                abi: provisionerAbi,
-                functionName: 'provisioner',
-              });
+            if (protocol === 'aera' && vaultType === 'multi-depositor') {
+              const [onChainProvisioner, onChainFeeCalculator] = await Promise.all([
+                client.readContract({
+                  address: vaultAddress,
+                  abi: aeraVaultAbi,
+                  functionName: 'provisioner',
+                }),
+                client.readContract({
+                  address: vaultAddress,
+                  abi: aeraVaultAbi,
+                  functionName: 'feeCalculator',
+                }),
+              ]);
               expect(
-                getAddress(onChainProvisioner),
-                `${vaultId} chain ${chainId}: provisioner() returned ${onChainProvisioner}, expected ${provisionerAddress}`
-              ).toBe(getAddress(provisionerAddress));
+                isAddress(onChainProvisioner) && getAddress(onChainProvisioner) !== zeroAddress,
+                `${vaultId} chain ${chainId}: invalid on-chain provisioner ${onChainProvisioner}`
+              ).toBe(true);
+              expect(
+                isAddress(onChainFeeCalculator) && getAddress(onChainFeeCalculator) !== zeroAddress,
+                `${vaultId} chain ${chainId}: invalid on-chain feeCalculator ${onChainFeeCalculator}`
+              ).toBe(true);
             }
           })
         );

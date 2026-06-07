@@ -7,10 +7,13 @@ import {
 } from 'viem';
 import { priceAndFeeCalculatorAbi } from '../abis/priceAndFeeCalculator';
 import { provisionerAbi } from '../abis/provisioner';
+import {
+  Rounding,
+  convertTokenToUnitsIfActive,
+  convertUnitsToTokenIfActive,
+} from './priceAndFeeCalculator';
 import { MAX_BPS } from '../../constants';
-
-const ROUNDING_FLOOR = 0;
-const ROUNDING_CEIL = 1;
+import type { ContractVersion } from '../types';
 
 export type PriceAndFeeCalculatorContract<T extends Client> = GetContractReturnType<
   typeof priceAndFeeCalculatorAbi,
@@ -37,13 +40,6 @@ function getProvisioner<T extends Client>(client: T, address: Address) {
   });
 }
 
-async function getPriceAndFeeCalculatorAddress(
-  client: PublicClient,
-  provisioner: Address
-): Promise<Address> {
-  return getProvisioner(client, provisioner).read.PRICE_FEE_CALCULATOR();
-}
-
 async function getTokenDetails(client: PublicClient, provisioner: Address, token: Address) {
   return getProvisioner(client, provisioner).read.tokensDetails([token]);
 }
@@ -51,41 +47,47 @@ async function getTokenDetails(client: PublicClient, provisioner: Address, token
 export async function getAsyncDepositUnitsOut(
   client: PublicClient,
   provisioner: Address,
+  feeCalculator: Address,
+  feeCalculatorVersion: ContractVersion,
   vault: Address,
   token: Address,
   tokensIn: bigint
 ): Promise<bigint> {
-  const [calculatorAddress, tokenDetails] = await Promise.all([
-    getPriceAndFeeCalculatorAddress(client, provisioner),
-    getTokenDetails(client, provisioner, token),
-  ]);
+  const tokenDetails = await getTokenDetails(client, provisioner, token);
   const depositMultiplier = BigInt(tokenDetails[3]);
   const adjustedTokensIn = (tokensIn * depositMultiplier) / MAX_BPS;
 
-  return getPriceAndFeeCalculator(client, calculatorAddress).read.convertTokenToUnitsIfActive([
+  return convertTokenToUnitsIfActive(
+    client,
+    feeCalculator,
+    feeCalculatorVersion,
     vault,
     token,
     adjustedTokensIn,
-    ROUNDING_FLOOR,
-  ]);
+    Rounding.Floor
+  );
 }
 
 export async function getAsyncRedeemTokenOut(
   client: PublicClient,
   provisioner: Address,
+  feeCalculator: Address,
+  feeCalculatorVersion: ContractVersion,
   vault: Address,
   token: Address,
   unitsIn: bigint
 ): Promise<bigint> {
-  const [calculatorAddress, tokenDetails] = await Promise.all([
-    getPriceAndFeeCalculatorAddress(client, provisioner),
-    getTokenDetails(client, provisioner, token),
-  ]);
+  const tokenDetails = await getTokenDetails(client, provisioner, token);
   const redeemMultiplier = BigInt(tokenDetails[4]);
-  const tokensOut = await getPriceAndFeeCalculator(
+  const tokensOut = await convertUnitsToTokenIfActive(
     client,
-    calculatorAddress
-  ).read.convertUnitsToTokenIfActive([vault, token, unitsIn, ROUNDING_FLOOR]);
+    feeCalculator,
+    feeCalculatorVersion,
+    vault,
+    token,
+    unitsIn,
+    Rounding.Floor
+  );
 
   return (tokensOut * redeemMultiplier) / MAX_BPS;
 }
@@ -93,23 +95,25 @@ export async function getAsyncRedeemTokenOut(
 export async function getAsyncWithdrawUnitsIn(
   client: PublicClient,
   provisioner: Address,
+  feeCalculator: Address,
+  feeCalculatorVersion: ContractVersion,
   vault: Address,
   token: Address,
   tokensOut: bigint
 ): Promise<bigint> {
-  const [calculatorAddress, tokenDetails] = await Promise.all([
-    getPriceAndFeeCalculatorAddress(client, provisioner),
-    getTokenDetails(client, provisioner, token),
-  ]);
+  const tokenDetails = await getTokenDetails(client, provisioner, token);
   const redeemMultiplier = BigInt(tokenDetails[4]);
   const preMultiplierTokensOut = (tokensOut * MAX_BPS + redeemMultiplier - 1n) / redeemMultiplier;
 
-  return getPriceAndFeeCalculator(client, calculatorAddress).read.convertTokenToUnitsIfActive([
+  return convertTokenToUnitsIfActive(
+    client,
+    feeCalculator,
+    feeCalculatorVersion,
     vault,
     token,
     preMultiplierTokensOut,
-    ROUNDING_CEIL,
-  ]);
+    Rounding.Ceil
+  );
 }
 
 export function requestDepositTxRequest(

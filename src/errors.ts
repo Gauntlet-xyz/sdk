@@ -49,10 +49,10 @@ export class ChainMismatchError extends GauntletSDKError {
 
 export class UnsupportedDepositModeError extends GauntletSDKError {
   readonly vaultId: string;
-  readonly requested: 'sync' | 'async';
+  readonly requested: string;
   readonly available: string;
 
-  constructor(vaultId: string, requested: 'sync' | 'async', available: string) {
+  constructor(vaultId: string, requested: string, available: string) {
     super(`Vault "${vaultId}" does not support ${requested} deposits (available: ${available})`);
     this.name = 'UnsupportedDepositModeError';
     this.vaultId = vaultId;

@@ -12,7 +12,6 @@
           "chainId": 8453,
           "vaultAddress": "0xeE8F4eC5672F09119b96Ab6fB59C27E1b7e44b61",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
@@ -34,7 +33,6 @@
           "chainId": 1,
           "vaultAddress": "0xdd0f28e19C1780eb6396170735D45153D261490d",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
@@ -56,7 +54,6 @@
           "chainId": 1,
           "vaultAddress": "0x8c106EEDAd96553e64287A5A6839c3Cc78afA3D0",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
@@ -78,7 +75,6 @@
           "chainId": 1,
           "vaultAddress": "0x8eB67A509616cd6A7c1B3c8C21D48FF57df3d458",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
@@ -100,7 +96,6 @@
           "chainId": 1,
           "vaultAddress": "0x2371e134e3455e0593363cBF89d3b6cf53740618",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
@@ -122,7 +117,6 @@
           "chainId": 1,
           "vaultAddress": "0x4881Ef0BF6d2365D3dd6499ccd7532bcdBCE0658",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
@@ -144,7 +138,6 @@
           "chainId": 1,
           "vaultAddress": "0x8CB3649114051cA5119141a34C200D65dc0Faa73",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0xdAC17F958D2ee523a2206206994597C13D831ec7",
@@ -166,7 +159,6 @@
           "chainId": 1,
           "vaultAddress": "0xc080f56504e0278828A403269DB945F6c6D6E014",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0xA0d69E286B938e21CBf7E51D71F6A4c8918f482F",
@@ -188,7 +180,6 @@
           "chainId": 1,
           "vaultAddress": "0x500331c9fF24D9d11aee6B07734Aa72343EA74a5",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0x6B175474E89094C44Da98b954EedeAC495271d0F",
@@ -210,7 +201,6 @@
           "chainId": 1,
           "vaultAddress": "0x1B4cd53a1A8e5F50aB6320EF34E5fB4D3df7B6f6",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0x00000000eFE302BEAA2b3e6e1b18d08D69a9012a",
@@ -232,7 +222,6 @@
           "chainId": 1,
           "vaultAddress": "0x4Ff4186188f8406917293A9e01A1ca16d3cf9E59",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
@@ -254,7 +243,6 @@
           "chainId": 1,
           "vaultAddress": "0x443df5eEE3196e9b2Dd77CaBd3eA76C3dee8f9b2",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599",
@@ -276,7 +264,6 @@
           "chainId": 1,
           "vaultAddress": "0xF587f2e8AfF7D76618d3B6B4626621860FbD54e3",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
@@ -298,7 +285,6 @@
           "chainId": 1,
           "vaultAddress": "0xdC94785959B73F7A168452b3654E44fEc6A750e4",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0x8236a87084f8B84306f72007F36F2618A5634494",
@@ -320,7 +306,6 @@
           "chainId": 1,
           "vaultAddress": "0x78B18E07dc43017fcEaabaD0751d6464c0F56b25",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0x64351fC9810aDAd17A690E4e1717Df5e7e085160",
@@ -342,7 +327,6 @@
           "chainId": 1,
           "vaultAddress": "0x6859B34a9379122d25A9FA46f0882d434fee36c3",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0xab5eB14c09D416F0aC63661E57EDB7AEcDb9BEfA",
@@ -364,7 +348,6 @@
           "chainId": 1,
           "vaultAddress": "0x701907283a57FF77E255C3f1aAD790466B8CE4ef",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
@@ -386,7 +369,6 @@
           "chainId": 1,
           "vaultAddress": "0x132E6C9C33A62D7727cd359b1f51e5B566E485Eb",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
@@ -408,7 +390,6 @@
           "chainId": 1,
           "vaultAddress": "0x1e6ffa4e9F63d10B8820A3ab52566Af881Dab53c",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
@@ -430,7 +411,6 @@
           "chainId": 1,
           "vaultAddress": "0x059Fc6723b9bF77DbF4283C8d7C90eA8Af44EF10",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0x18084fbA666a33d37592fA2633fD49a74DD93a88",
@@ -452,7 +432,6 @@
           "chainId": 1,
           "vaultAddress": "0xA8875aaeBc4f830524e35d57F9772FfAcbdD6C45",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
@@ -474,7 +453,6 @@
           "chainId": 1,
           "vaultAddress": "0xdBB316375B4dC992B2c8827D120c09dFB1d3455D",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0xd9D920AA40f578ab794426F5C90F6C731D159DEf",
@@ -496,7 +474,6 @@
           "chainId": 1,
           "vaultAddress": "0xc582F04d8a82795aa2Ff9c8bb4c1c889fe7b754e",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
@@ -518,7 +495,6 @@
           "chainId": 1,
           "vaultAddress": "0x3365184e87d2Bd75961780454A5810BEc956F0dD",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0xa3931d71877C0E7a3148CB7Eb4463524FEc27fbD",
@@ -540,7 +516,6 @@
           "chainId": 1,
           "vaultAddress": "0x79FD640000F8563A866322483524a4b48f1Ed702",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0xdAC17F958D2ee523a2206206994597C13D831ec7",
@@ -562,7 +537,6 @@
           "chainId": 1,
           "vaultAddress": "0x31A5684983EeE865d943A696AAC155363bA024f9",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
@@ -584,7 +558,6 @@
           "chainId": 1,
           "vaultAddress": "0x812B2C6Ab3f4471c0E43D4BB61098a9211017427",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599",
@@ -606,7 +579,6 @@
           "chainId": 1,
           "vaultAddress": "0xc54b4E08C1Dcc199fdd35c6b5Ab589ffD3428a8d",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0xdAC17F958D2ee523a2206206994597C13D831ec7",
@@ -628,7 +600,6 @@
           "chainId": 1,
           "vaultAddress": "0x2ed10624315b74a78f11FAbedAa1A228c198aEfB",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0x1aBaEA1f7C830bD89Acc67eC4af516284b1bC33c",
@@ -650,7 +621,6 @@
           "chainId": 1,
           "vaultAddress": "0x9a1D6bd5b8642C41F25e0958129B85f8E1176F3e",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
@@ -672,7 +642,6 @@
           "chainId": 1,
           "vaultAddress": "0xE571B648569619566CF6ce1060C97B621CB635D3",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0xdAC17F958D2ee523a2206206994597C13D831ec7",
@@ -694,7 +663,6 @@
           "chainId": 1,
           "vaultAddress": "0x842A84Df61DbE701c5dAE345F3f8E64aF727E48C",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0x1aBaEA1f7C830bD89Acc67eC4af516284b1bC33c",
@@ -716,7 +684,6 @@
           "chainId": 1,
           "vaultAddress": "0x43fCd85E8D9D003D515f886891B7C742AC9f92da",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
@@ -738,7 +705,6 @@
           "chainId": 1,
           "vaultAddress": "0xf3557AD5E984211ac8A0874A670344f2C3376471",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0xdAC17F958D2ee523a2206206994597C13D831ec7",
@@ -760,7 +726,6 @@
           "chainId": 1,
           "vaultAddress": "0x5f342382D5F77F0f99E8f26161E689df6c7Cded3",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
@@ -782,7 +747,6 @@
           "chainId": 8453,
           "vaultAddress": "0x6b13c060F13Af1fdB319F52315BbbF3fb1D88844",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0x4200000000000000000000000000000000000006",
@@ -804,7 +768,6 @@
           "chainId": 8453,
           "vaultAddress": "0xc0c5689e6f4D256E861F65465b691aeEcC0dEb12",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
@@ -826,7 +789,6 @@
           "chainId": 8453,
           "vaultAddress": "0x6770216aC60F634483Ec073cBABC4011c94307Cb",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
@@ -848,7 +810,6 @@
           "chainId": 8453,
           "vaultAddress": "0x23479229e52Ab6aaD312D0B03DF9F33B46753B5e",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
@@ -870,7 +831,6 @@
           "chainId": 8453,
           "vaultAddress": "0x5A32099837D89E3a794a44fb131CBbAD41f87a8C",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0x4200000000000000000000000000000000000006",
@@ -892,7 +852,6 @@
           "chainId": 8453,
           "vaultAddress": "0x0D05e6ec0A10f9fFE9229EAA785c11606a1d13Fb",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0xecAc9C5F704e954931349Da37F60E39f515c11c1",
@@ -914,7 +873,6 @@
           "chainId": 8453,
           "vaultAddress": "0x616a4E1db48e22028f6bbf20444Cd3b8e3273738",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
@@ -936,7 +894,6 @@
           "chainId": 8453,
           "vaultAddress": "0x5a47C803488FE2BB0A0EAaf346b420e4dF22F3C7",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
@@ -958,7 +915,6 @@
           "chainId": 8453,
           "vaultAddress": "0x27D8c7273fd3fcC6956a0B370cE5Fd4A7fc65c18",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0x4200000000000000000000000000000000000006",
@@ -980,7 +936,6 @@
           "chainId": 8453,
           "vaultAddress": "0x0FE5b4aF0337Fd5b2E1675D5f5E8c9101E4D3c7e",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0x5875eEE11Cf8398102FdAd704C9E96607675467a",
@@ -1002,7 +957,6 @@
           "chainId": 8453,
           "vaultAddress": "0x43Cd00De63485618A5CEEBE0de364cD6cBeB26E7",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0x7Ba6F01772924a82D9626c126347A28299E98c98",
@@ -1024,7 +978,6 @@
           "chainId": 8453,
           "vaultAddress": "0x1c155be6bC51F2c37d472d4C2Eba7a637806e122",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42",
@@ -1046,7 +999,6 @@
           "chainId": 8453,
           "vaultAddress": "0x236919F11ff9eA9550A4287696C2FC9e18E6e890",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
@@ -1068,7 +1020,6 @@
           "chainId": 8453,
           "vaultAddress": "0x050cE30b927Da55177A4914EC73480238BAD56f0",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
@@ -1090,7 +1041,6 @@
           "chainId": 8453,
           "vaultAddress": "0x1deEfABEe758AAbdC29a542B24ca3b75aFD56765",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
@@ -1112,7 +1062,6 @@
           "chainId": 8453,
           "vaultAddress": "0xFeFeC33668E22677c4762d0853d56245a800ff08",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0x4200000000000000000000000000000000000006",
@@ -1134,7 +1083,6 @@
           "chainId": 8453,
           "vaultAddress": "0x94Af495DE1F56Aa5576dEB17986bDCeE5Dd9778D",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42",
@@ -1156,7 +1104,6 @@
           "chainId": 130,
           "vaultAddress": "0x89849B6e57e1c61e447257242bDa97c70FA99b6b",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0x9151434b16b9763660705744891fA906F660EcC5",
@@ -1178,7 +1125,6 @@
           "chainId": 130,
           "vaultAddress": "0x38f4f3B6533de0023b9DCd04b02F93d36ad1F9f9",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0x078D782b760474a361dDA0AF3839290b0EF57AD6",
@@ -1200,7 +1146,6 @@
           "chainId": 130,
           "vaultAddress": "0x830898200F0E8Be8Dc1C9A836f4AB29ECEdf76eb",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0x4200000000000000000000000000000000000006",
@@ -1222,7 +1167,6 @@
           "chainId": 747474,
           "vaultAddress": "0x1ecDC3F2B5E90bfB55fF45a7476FF98A8957388E",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0x2DCa96907fde857dd3D816880A0df407eeB2D2F2",
@@ -1244,7 +1188,6 @@
           "chainId": 747474,
           "vaultAddress": "0xE4248e2105508FcBad3fe95691551d1AF14015f7",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0x203A662b0BD271A6ed5a60EdFbd04bFce608FD36",
@@ -1266,7 +1209,6 @@
           "chainId": 747474,
           "vaultAddress": "0x9540441C503D763094921dbE4f13268E6d1d3B56",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0x00000000eFE302BEAA2b3e6e1b18d08D69a9012a",
@@ -1288,7 +1230,6 @@
           "chainId": 747474,
           "vaultAddress": "0xf243523996ADbb273F0B237B53f30017C4364bBC",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0x0913DA6Da4b42f538B445599b46Bb4622342Cf52",
@@ -1310,7 +1251,6 @@
           "chainId": 747474,
           "vaultAddress": "0xC5e7AB07030305fc925175b25B93b285d40dCdFf",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0xEE7D8BCFb72bC1880D0Cf19822eB0A2e6577aB62",
@@ -1332,7 +1272,6 @@
           "chainId": 42161,
           "vaultAddress": "0x7e97fa6893871A2751B5fE961978DCCb2c201E65",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
@@ -1354,7 +1293,6 @@
           "chainId": 42161,
           "vaultAddress": "0x7c574174DA4b2be3f705c6244B4BfA0815a8B3Ed",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
@@ -1376,7 +1314,6 @@
           "chainId": 42161,
           "vaultAddress": "0x139250CdB310D657eAC506c7C7FC6AcDE34Af1ec",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9",
@@ -1398,7 +1335,6 @@
           "chainId": 42161,
           "vaultAddress": "0xBD14bEa2eCECeCD5F32149B0f84BE7f7F446B964",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1",
@@ -1420,7 +1356,6 @@
           "chainId": 42161,
           "vaultAddress": "0x55a2B207b0074E13AdCb858950a81B7a04775E0F",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
@@ -1442,7 +1377,6 @@
           "chainId": 42161,
           "vaultAddress": "0x610D151aE40662AE148cdBaaE1Ea5904b6AFAE78",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
@@ -1464,7 +1398,6 @@
           "chainId": 999,
           "vaultAddress": "0x08C00F8279dFF5B0CB5a04d349E7d79708Ceadf3",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0xb88339CB7199b77E23DB6E890353E22632Ba630f",
@@ -1486,7 +1419,6 @@
           "chainId": 999,
           "vaultAddress": "0x53A333e51E96FE288bC9aDd7cdC4B1EAD2CD2FfA",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0xB8CE59FC3717ada4C02eaDF9682A9e934F625ebb",
@@ -1508,7 +1440,6 @@
           "chainId": 999,
           "vaultAddress": "0x0571362ba5EA9784a97605f57483f865A37dBEAA",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0xBe6727B535545C67d5cAa73dEa54865B92CF7907",
@@ -1530,7 +1461,6 @@
           "chainId": 999,
           "vaultAddress": "0x5eEC795d919FA97688Fb9844eeB0072E6B846F9d",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0x5d3a1Ff2b6BAb83b63cd9AD0787074081a52ef34",
@@ -1552,7 +1482,6 @@
           "chainId": 999,
           "vaultAddress": "0x264a06Fd7A7C9E0Bfe75163b475E2A3cc1856578",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0x5555555555555555555555555555555555555555",
@@ -1574,7 +1503,6 @@
           "chainId": 10,
           "vaultAddress": "0xC30ce6A5758786e0F640cC5f881Dd96e9a1C5C59",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
@@ -1596,7 +1524,6 @@
           "chainId": 10,
           "vaultAddress": "0x4fFc4e5F1f1F5C43dc9Bc27b53728DA13b02bE35",
           "vaultType": "single-depositor",
-          "depositMode": "sync",
           "supplyToken": [
             {
               "address": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
@@ -1617,9 +1544,7 @@
           "chain": "evm",
           "chainId": 8453,
           "vaultAddress": "0x000000000001CdB57E58Fa75Fe420a0f4D6640D5",
-          "provisionerAddress": "0x18CF8d963E1a727F9bbF3AEffa0Bd04FB4dBdA07",
           "vaultType": "multi-depositor",
-          "depositMode": "async",
           "supplyToken": [
             {
               "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
@@ -1632,9 +1557,7 @@
           "chain": "evm",
           "chainId": 1,
           "vaultAddress": "0x3bd9248048df95db4fbd748c6cd99c1baa40bad0",
-          "provisionerAddress": "0x74C4A66CE4F4779B11E7c63D42e51EEef3A80D11",
           "vaultType": "multi-depositor",
-          "depositMode": "async",
           "supplyToken": [
             {
               "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
@@ -1647,9 +1570,7 @@
           "chain": "evm",
           "chainId": 42161,
           "vaultAddress": "0x000000001DC8bd45d7E7829fb1c969cbe4D0D1eC",
-          "provisionerAddress": "0xDd4a42603E6d8E515C3468789375A98c376821b3",
           "vaultType": "multi-depositor",
-          "depositMode": "async",
           "supplyToken": [
             {
               "address": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
@@ -1662,9 +1583,7 @@
           "chain": "evm",
           "chainId": 10,
           "vaultAddress": "0x000000001DC8bd45d7E7829fb1c969cbe4D0D1eC",
-          "provisionerAddress": "0xCC923371F0d3A9cA75d98E767Df9dE1cdf5799Ef",
           "vaultType": "multi-depositor",
-          "depositMode": "async",
           "supplyToken": [
             {
               "address": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
@@ -1685,9 +1604,7 @@
           "chain": "evm",
           "chainId": 8453,
           "vaultAddress": "0x0000000009efb912061c7d465b9ecd5215833365",
-          "provisionerAddress": "0xf065d74240Beb283398b5a5F62Fc645686Be643e",
           "vaultType": "multi-depositor",
-          "depositMode": "async",
           "supplyToken": [
             {
               "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
@@ -1700,9 +1617,7 @@
           "chain": "evm",
           "chainId": 42161,
           "vaultAddress": "0x3e9c9888a3ba0fbe9dc731d4afc9182f5706eaad",
-          "provisionerAddress": "0x694B729FEf80432A9aDf647145a33dCcD5C1e3Cb",
           "vaultType": "multi-depositor",
-          "depositMode": "async",
           "supplyToken": [
             {
               "address": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
@@ -1715,9 +1630,7 @@
           "chain": "evm",
           "chainId": 10,
           "vaultAddress": "0x3e9c9888a3ba0fbe9dc731d4afc9182f5706eaad",
-          "provisionerAddress": "0x27a43Ec68F635f49811e6889A4a56D7e0590a7B5",
           "vaultType": "multi-depositor",
-          "depositMode": "async",
           "supplyToken": [
             {
               "address": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
@@ -1730,9 +1643,7 @@
           "chain": "evm",
           "chainId": 1,
           "vaultAddress": "0x8acF95A9d58Ca51ED5f2825324419c92c440342b",
-          "provisionerAddress": "0x1a4e8B0bCf5F0f7fb4dC5F4b398f37b8097d0b36",
           "vaultType": "multi-depositor",
-          "depositMode": "async",
           "supplyToken": [
             {
               "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
@@ -1753,9 +1664,7 @@
           "chain": "evm",
           "chainId": 8453,
           "vaultAddress": "0x7c30d121176242EafDc77D307E804280AE5cFD6C",
-          "provisionerAddress": "0x1e4496577010a395ff8dc05395Ec4136E624DE7D",
           "vaultType": "multi-depositor",
-          "depositMode": "async",
           "supplyToken": [
             {
               "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
@@ -1776,9 +1685,7 @@
           "chain": "evm",
           "chainId": 8453,
           "vaultAddress": "0x70d974963f44Bb5CeA01378E83e55cced102EE82",
-          "provisionerAddress": "0x11C6a42B70B66bc4A851D35e85A95103b67eC112",
           "vaultType": "multi-depositor",
-          "depositMode": "async",
           "supplyToken": [
             {
               "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
@@ -1791,9 +1698,7 @@
           "chain": "evm",
           "chainId": 1,
           "vaultAddress": "0x419cdBaFa120Ad8CE5c9Daf662Bd56A36CE31533",
-          "provisionerAddress": "0x7eAeF7765Ab941b75e5aAD931541a6068f1dFc63",
           "vaultType": "multi-depositor",
-          "depositMode": "async",
           "supplyToken": [
             {
               "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
@@ -1806,9 +1711,7 @@
           "chain": "evm",
           "chainId": 42161,
           "vaultAddress": "0xA9c4D4669bf0775c1bC949991Af6367541Fb5f99",
-          "provisionerAddress": "0xA49Ce85A52DB702857F32f53377DB1bB5d9aB5A7",
           "vaultType": "multi-depositor",
-          "depositMode": "async",
           "supplyToken": [
             {
               "address": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
@@ -1821,9 +1724,7 @@
           "chain": "evm",
           "chainId": 10,
           "vaultAddress": "0x2Ef9A1D3120647b114a7875372Be8FFDDfa6BB33",
-          "provisionerAddress": "0xd4736ff34F082a6640786ce13E384b54417F3c13",
           "vaultType": "multi-depositor",
-          "depositMode": "async",
           "supplyToken": [
             {
               "address": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
@@ -1844,9 +1745,7 @@
           "chain": "evm",
           "chainId": 1,
           "vaultAddress": "0x00000000d8f3d6c5DFeB2D2b5ED2276095f3aF44",
-          "provisionerAddress": "0x21994912f1D286995c4d4961303cBB8E44939944",
           "vaultType": "multi-depositor",
-          "depositMode": "async",
           "expirationDays": 64,
           "supplyToken": [
             {
@@ -1873,9 +1772,7 @@
           "chain": "evm",
           "chainId": 1,
           "vaultAddress": "0x953Ca96b057D5397CE7791C5AE9b5a19b1352341",
-          "provisionerAddress": "0x01587FC1e3713cd797BD9131F64fB29558a4dd01",
           "vaultType": "multi-depositor",
-          "depositMode": "async",
           "expirationDays": 64,
           "supplyToken": [
             {
@@ -1897,9 +1794,7 @@
           "chain": "evm",
           "chainId": 1,
           "vaultAddress": "0x00000000D283e5f8294e7E2dc06b55D43e060F49",
-          "provisionerAddress": "0xA582D1b9c74892100986b7f2913468FaF350ba41",
           "vaultType": "multi-depositor",
-          "depositMode": "async",
           "supplyToken": [
             {
               "address": "0x80ac24aa929eaf5013f6436cda2a7ba190f5cc0b",
@@ -1920,9 +1815,7 @@
           "chain": "evm",
           "chainId": 1,
           "vaultAddress": "0x83c248E8C6C0C2F6C0Fe4E2b7B259a8AFCbA6Fab",
-          "provisionerAddress": "0x6178f27700786BC42abA6e58d61bb6d30eD7d9c1",
           "vaultType": "multi-depositor",
-          "depositMode": "async",
           "supplyToken": [
             {
               "address": "0x80ac24aa929eaf5013f6436cda2a7ba190f5cc0b",
@@ -1943,9 +1836,7 @@
           "chain": "evm",
           "chainId": 1,
           "vaultAddress": "0xefF0AE5b39271b33f448cD408b51DC8aA72a672b",
-          "provisionerAddress": "0xD580c26F7bD8A8a66fd32a97Df2308C083b65d9c",
           "vaultType": "multi-depositor",
-          "depositMode": "async",
           "supplyToken": [
             {
               "address": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
@@ -1966,9 +1857,7 @@
           "chain": "evm",
           "chainId": 1,
           "vaultAddress": "0x05B011922348325E7C9Ece372560DF92eA699886",
-          "provisionerAddress": "0x1C522384920E87d6D6720cf067C931Bb6B84A5dC",
           "vaultType": "multi-depositor",
-          "depositMode": "async",
           "supplyToken": [
             {
               "address": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
@@ -1989,9 +1878,7 @@
           "chain": "evm",
           "chainId": 1,
           "vaultAddress": "0xCA4DF15F1100bd643b719Dc496dF4A46Ce61e0E6",
-          "provisionerAddress": "0x35A2f80d1a53E7aCbE71cB9FD07722Ab0F1252D9",
           "vaultType": "multi-depositor",
-          "depositMode": "async",
           "supplyToken": [
             {
               "address": "0x14d60e7fdc0d71d8611742720e4c50e7a974020c",
@@ -2012,9 +1899,7 @@
           "chain": "evm",
           "chainId": 1,
           "vaultAddress": "0x02b6bFD9561aC669305A0af0e5b88D9Cf850Bf67",
-          "provisionerAddress": "0xa9cdBbaFD61bc29C80989e5805c41f611BA7a5DA",
           "vaultType": "multi-depositor",
-          "depositMode": "async",
           "supplyToken": [
             {
               "address": "0x14d60e7fdc0d71d8611742720e4c50e7a974020c",
@@ -2035,9 +1920,7 @@
           "chain": "evm",
           "chainId": 8453,
           "vaultAddress": "0x2Bb2e3c0a970E74D219bADeC5d05E2D4cf456Ac8",
-          "provisionerAddress": "0x6cAa540b9193EceE47B674c7B33038dA8d1A6A59",
           "vaultType": "multi-depositor",
-          "depositMode": "async",
           "supplyToken": [
             {
               "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
@@ -2050,9 +1933,7 @@
           "chain": "evm",
           "chainId": 1,
           "vaultAddress": "0xF008043d4a0301E7dC45A92FFf77e3af1F975Ce5",
-          "provisionerAddress": "0xf9bd6C06fe8D8DB1dF3FD282417060c9973EB024",
           "vaultType": "multi-depositor",
-          "depositMode": "async",
           "supplyToken": [
             {
               "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
@@ -2065,9 +1946,7 @@
           "chain": "evm",
           "chainId": 42161,
           "vaultAddress": "0x93d5226FA75C1Ff8ba55943355A659Ed0A634eF5",
-          "provisionerAddress": "0xb182f58Dff2A5c8Ea4Acd34136cbc1c812EE9d1d",
           "vaultType": "multi-depositor",
-          "depositMode": "async",
           "supplyToken": [
             {
               "address": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
@@ -2080,9 +1959,7 @@
           "chain": "evm",
           "chainId": 10,
           "vaultAddress": "0x79A296131A8cAE82613AA16A158Ae146742Ac592",
-          "provisionerAddress": "0xDe32bC1bDBDF66395e7654D4417D37327c5924d4",
           "vaultType": "multi-depositor",
-          "depositMode": "async",
           "supplyToken": [
             {
               "address": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
@@ -2103,9 +1980,7 @@
           "chain": "evm",
           "chainId": 8453,
           "vaultAddress": "0xEAADcC817cf20E6aF5563477cd6D5Fb3D9C85806",
-          "provisionerAddress": "0xC77EA8B5b793a61eA34e13097805854Ec8fD8a71",
           "vaultType": "multi-depositor",
-          "depositMode": "async",
           "supplyToken": [
             {
               "address": "0x60a3e35cc302bfa44cb288bc5a4f316fdb1adb42",
@@ -2126,9 +2001,7 @@
           "chain": "evm",
           "chainId": 1,
           "vaultAddress": "0x6e4713B21E2879642a83d1c4dC0daCaa7ec6dB63",
-          "provisionerAddress": "0x5251B43F11209Cf15249D453A30c900E53fedb4F",
           "vaultType": "multi-depositor",
-          "depositMode": "async",
           "supplyToken": [
             {
               "address": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
@@ -2149,9 +2022,7 @@
           "chain": "evm",
           "chainId": 1,
           "vaultAddress": "0x0DdF5C92efdA86aff86bb8569183d804c0eCfE7f",
-          "provisionerAddress": "0x38DbfFd86DC587CA33077F22c5a52317240d083A",
           "vaultType": "multi-depositor",
-          "depositMode": "async",
           "supplyToken": [
             {
               "address": "0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0",
@@ -2172,9 +2043,7 @@
           "chain": "evm",
           "chainId": 8453,
           "vaultAddress": "0x785F3D804aCdA02CD0eC2243dc6f9F408CC075C8",
-          "provisionerAddress": "0x8b63543D76c417F293991A68BA6E7FaD5F8a7fB1",
           "vaultType": "multi-depositor",
-          "depositMode": "async",
           "supplyToken": [
             {
               "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
@@ -2195,9 +2064,7 @@
           "chain": "evm",
           "chainId": 42161,
           "vaultAddress": "0x364d2ACDc98d1bF8A734141178996E9fB0b37d2E",
-          "provisionerAddress": "0xA9c8ee886e3632C6Db9DE90cAe59A53431FEEc06",
           "vaultType": "multi-depositor",
-          "depositMode": "async",
           "supplyToken": [
             {
               "address": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",

@@ -16,6 +16,17 @@ export { getDepositReceiverApprovalTx } from './evm/depositReceiverApproval';
 export { getWithdrawTx } from './evm/withdraw';
 export { getUserCurrentBalance } from './evm/userCurrentBalance';
 export { getVaults, VaultId } from './evm/vaults';
+export { resolveAeraRuntimeContracts, resolveContractVersion } from './evm/aeraContracts';
+export {
+  Rounding,
+  convertTokenToUnits,
+  convertTokenToUnitsIfActive,
+  convertUnitsToToken,
+  convertUnitsToTokenIfActive,
+  getAnchorTimestamp,
+  getVaultState,
+  isVaultPaused,
+} from './evm/aeraContracts/priceAndFeeCalculator';
 
 export type { EvmDepositParams } from './evm/deposit';
 export type { EvmDepositReceiverApprovalParams } from './evm/depositReceiverApproval';
@@ -23,6 +34,8 @@ export type { EvmWithdrawParams } from './evm/withdraw';
 export type { EvmTxStep } from './evm/adapters/types';
 export type { UserCurrentBalanceParams, UserCurrentBalance } from './evm/userCurrentBalance';
 export type { PreparedTx } from './attribution';
+export type { AeraRuntimeContracts, AeraTokenModeSupport } from './evm/aeraContracts';
+export type { NormalizedVaultPriceState } from './evm/aeraContracts/priceAndFeeCalculator';
 
 export {
   GauntletSDKError,

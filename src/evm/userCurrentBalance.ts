@@ -2,9 +2,8 @@ import { parseAbi, type Address } from 'viem';
 import type { GauntletClient } from '../client';
 import type { EvmVaultDeployment } from './types';
 import { ChainMismatchError, UnsupportedProtocolError, VaultNotFoundError } from '../errors';
-import { getMultiDepositorVault, resolveContractVersion } from './aeraContracts';
-import * as provisionerV1 from './aeraContracts/v1';
-import * as provisionerV2 from './aeraContracts/v2';
+import { getMultiDepositorVault, resolveAeraRuntimeContracts } from './aeraContracts';
+import { convertUnitsToToken } from './aeraContracts/priceAndFeeCalculator';
 import { provisionerV2Abi } from './abis/provisionerV2';
 import { ContractVersion } from './types';
 import { BLOCKS_3_DAYS, CHAIN_NAMES, DEFAULT_BLOCKS_3_DAYS, LOG_PAGE_SIZE } from '../constants';
@@ -94,23 +93,23 @@ async function queryDeploymentBalance(
 ): Promise<UserCurrentBalance> {
   const publicClient = client.getPublicClient(deployment.chainId);
   const token = deployment.supplyToken[0];
-  const provisionerAddress = deployment.provisionerAddress!;
-  const isV2 = (await resolveContractVersion(publicClient, deployment)) === ContractVersion.V2;
 
   const vaultContract = getMultiDepositorVault(publicClient, deployment.vaultAddress);
-  const [units, feeCalculatorAddress] = await Promise.all([
+  const [runtime, units] = await Promise.all([
+    resolveAeraRuntimeContracts(publicClient, deployment),
     vaultContract.read.balanceOf([address]),
-    vaultContract.read.feeCalculator(),
   ]);
+  const provisionerAddress = runtime.provisioner.address;
+  const isV2 = runtime.provisioner.version === ContractVersion.V2;
 
-  const feeCalc = isV2
-    ? provisionerV2.getPriceAndFeeCalculator(publicClient, feeCalculatorAddress)
-    : provisionerV1.getPriceAndFeeCalculator(publicClient, feeCalculatorAddress);
-  const balance = await feeCalc.read.convertUnitsToToken([
+  const balance = await convertUnitsToToken(
+    publicClient,
+    runtime.feeCalculator.address,
+    runtime.feeCalculator.version,
     deployment.vaultAddress,
     token.address,
-    units,
-  ]);
+    units
+  );
 
   // Look back ~3 days for pending async requests
   const currentBlock = await publicClient.getBlockNumber();
@@ -210,11 +209,14 @@ async function queryDeploymentBalance(
 
   const pendingWithdraw =
     pendingWithdrawUnits > 0n
-      ? await feeCalc.read.convertUnitsToToken([
+      ? await convertUnitsToToken(
+          publicClient,
+          runtime.feeCalculator.address,
+          runtime.feeCalculator.version,
           deployment.vaultAddress,
           token.address,
-          pendingWithdrawUnits,
-        ])
+          pendingWithdrawUnits
+        )
       : 0n;
 
   return {
@@ -266,7 +268,7 @@ export async function getUserCurrentBalance(
   if (!vaultInfo) throw new VaultNotFoundError(params.vaultId);
 
   const evmDeployments = vaultInfo.deployments.filter(
-    (d): d is EvmVaultDeployment => d.chain === 'evm' && d.provisionerAddress !== undefined
+    (d): d is EvmVaultDeployment => d.chain === 'evm' && d.vaultType === 'multi-depositor'
   );
 
   if (vaultInfo.protocol !== 'aera' || evmDeployments.length === 0) {

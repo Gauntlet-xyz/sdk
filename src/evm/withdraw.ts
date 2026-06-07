@@ -7,11 +7,21 @@ import {
   AccountRequiredError,
   VaultNotFoundError,
   UnsupportedAssetError,
-  UnsupportedDepositModeError,
   InvalidSlippageBPSError,
 } from '../errors';
+import {
+  resolveAeraRuntimeContracts,
+  resolveAeraTokenModeSupport,
+  type AeraRuntimeContracts,
+} from './aeraContracts';
 import { resolveVault } from './vaults';
 import { DEFAULT_BPS, MAX_BPS } from '../constants';
+import {
+  parseOperationMode,
+  resolveOperationMode,
+  resolveSyncOnlyOperationMode,
+  type OperationMode,
+} from './operationMode';
 
 export type EvmWithdrawParams = {
   vaultId: string;
@@ -19,7 +29,7 @@ export type EvmWithdrawParams = {
   chainId?: number;
   // Required for multiasset vaults, not utilized yet
   assetSymbol?: string;
-  /** Request async (queued) withdraw. Only valid for vaults with depositMode 'async' or 'both'. */
+  /** Request async (queued) or sync withdraw. Availability is read from live vault configuration. */
   depositMode?: string;
   // So a developer is able to specify a separate receiver than the tx sender
   receiver?: Address;
@@ -92,17 +102,6 @@ export async function getWithdrawTx(
 
   const { vault, protocol } = resolved;
 
-  if (params.depositMode === 'sync' && vault.depositMode === 'async') {
-    throw new UnsupportedDepositModeError(params.vaultId, 'sync', vault.depositMode);
-  }
-  if (params.depositMode === 'async' && vault.depositMode === 'sync') {
-    throw new UnsupportedDepositModeError(params.vaultId, 'async', vault.depositMode);
-  }
-  let modifiedDepositMode = params.depositMode;
-  if (params.depositMode === undefined) {
-    modifiedDepositMode = vault.depositMode === 'both' ? 'async' : vault.depositMode;
-  }
-
   const token =
     vault.supplyToken.length > 1
       ? vault.supplyToken.find((tInfo) => tInfo.symbol === params.assetSymbol)
@@ -114,6 +113,24 @@ export async function getWithdrawTx(
 
   const adapter = getAdapter(protocol);
   const publicClient = client.getPublicClient(chainId);
+  const requestedWithdrawMode = parseOperationMode(params.vaultId, params.depositMode);
+  let modifiedDepositMode: OperationMode;
+  let aeraRuntime: AeraRuntimeContracts | undefined;
+
+  if (protocol === 'aera') {
+    aeraRuntime = await resolveAeraRuntimeContracts(publicClient, vault);
+    const tokenModeSupport = await resolveAeraTokenModeSupport(
+      publicClient,
+      aeraRuntime,
+      token.address
+    );
+    modifiedDepositMode = resolveOperationMode(params.vaultId, requestedWithdrawMode, {
+      async: tokenModeSupport.asyncRedeem,
+      sync: tokenModeSupport.syncRedeem,
+    });
+  } else {
+    modifiedDepositMode = resolveSyncOnlyOperationMode(params.vaultId, requestedWithdrawMode);
+  }
 
   const withdrawParams = {
     vault,
@@ -125,6 +142,7 @@ export async function getWithdrawTx(
     slippageBps: params.slippageBps ?? DEFAULT_BPS,
     solverTip: params.solverTip,
     maxPriceAge: params.maxPriceAge,
+    aeraRuntime,
     ...('shares' in params && params.shares != null ? { shares: params.shares } : {}),
     ...('amount' in params && params.amount != null ? { amount: params.amount } : {}),
     ...('entireAmount' in params && params.entireAmount ? { entireAmount: true as const } : {}),

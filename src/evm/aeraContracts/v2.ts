@@ -5,14 +5,16 @@ import {
   type PublicClient,
   getContract,
 } from 'viem';
-import { multiDepositorVaultAbi } from '../abis/multiDepositorVault';
 import { priceAndFeeCalculatorV2Abi } from '../abis/priceAndFeeCalculatorV2';
 import { provisionerV2Abi } from '../abis/provisionerV2';
+import {
+  Rounding,
+  convertTokenToUnitsIfActive,
+  convertUnitsToTokenIfActive,
+} from './priceAndFeeCalculator';
 import { MAX_BPS } from '../../constants';
 import { StalePriceError } from '../../errors';
-
-const ROUNDING_FLOOR = 0;
-const ROUNDING_CEIL = 1;
+import type { ContractVersion } from '../types';
 
 export type PriceAndFeeCalculatorContract<T extends Client> = GetContractReturnType<
   typeof priceAndFeeCalculatorV2Abi,
@@ -43,17 +45,11 @@ async function getTokenDetails(client: PublicClient, provisioner: Address, token
   return getProvisioner(client, provisioner).read.tokensDetails([token]);
 }
 
-async function getFeeCalculator(client: PublicClient, vault: Address): Promise<Address> {
-  return getContract({
-    address: vault,
-    abi: multiDepositorVaultAbi,
-    client,
-  }).read.feeCalculator();
-}
-
 async function getDepositUnitsOut({
   client,
   provisioner,
+  feeCalculator,
+  feeCalculatorVersion,
   vault,
   token,
   tokensIn,
@@ -61,29 +57,33 @@ async function getDepositUnitsOut({
 }: {
   client: PublicClient;
   provisioner: Address;
+  feeCalculator: Address;
+  feeCalculatorVersion: ContractVersion;
   vault: Address;
   token: Address;
   tokensIn: bigint;
   multiplierIndex: 4 | 6;
 }): Promise<bigint> {
-  const [feeCalculator, tokenDetails] = await Promise.all([
-    getFeeCalculator(client, vault),
-    getTokenDetails(client, provisioner, token),
-  ]);
+  const tokenDetails = await getTokenDetails(client, provisioner, token);
   const multiplier = BigInt(tokenDetails[multiplierIndex]);
   const adjustedTokensIn = (tokensIn * multiplier) / MAX_BPS;
 
-  return getPriceAndFeeCalculator(client, feeCalculator).read.convertTokenToUnitsIfActive([
+  return convertTokenToUnitsIfActive(
+    client,
+    feeCalculator,
+    feeCalculatorVersion,
     vault,
     token,
     adjustedTokensIn,
-    ROUNDING_FLOOR,
-  ]);
+    Rounding.Floor
+  );
 }
 
 async function getRedeemTokenOut({
   client,
   provisioner,
+  feeCalculator,
+  feeCalculatorVersion,
   vault,
   token,
   unitsIn,
@@ -91,19 +91,25 @@ async function getRedeemTokenOut({
 }: {
   client: PublicClient;
   provisioner: Address;
+  feeCalculator: Address;
+  feeCalculatorVersion: ContractVersion;
   vault: Address;
   token: Address;
   unitsIn: bigint;
   multiplierIndex: 5 | 7;
 }): Promise<bigint> {
-  const [feeCalculator, tokenDetails] = await Promise.all([
-    getFeeCalculator(client, vault),
+  const [tokenDetails, tokensOut] = await Promise.all([
     getTokenDetails(client, provisioner, token),
+    convertUnitsToTokenIfActive(
+      client,
+      feeCalculator,
+      feeCalculatorVersion,
+      vault,
+      token,
+      unitsIn,
+      Rounding.Floor
+    ),
   ]);
-  const tokensOut = await getPriceAndFeeCalculator(
-    client,
-    feeCalculator
-  ).read.convertUnitsToTokenIfActive([vault, token, unitsIn, ROUNDING_FLOOR]);
   const multiplier = BigInt(tokenDetails[multiplierIndex]);
 
   return (tokensOut * multiplier) / MAX_BPS;
@@ -112,6 +118,8 @@ async function getRedeemTokenOut({
 async function getWithdrawUnitsIn({
   client,
   provisioner,
+  feeCalculator,
+  feeCalculatorVersion,
   vault,
   token,
   tokensOut,
@@ -119,24 +127,26 @@ async function getWithdrawUnitsIn({
 }: {
   client: PublicClient;
   provisioner: Address;
+  feeCalculator: Address;
+  feeCalculatorVersion: ContractVersion;
   vault: Address;
   token: Address;
   tokensOut: bigint;
   multiplierIndex: 5 | 7;
 }): Promise<bigint> {
-  const [feeCalculator, tokenDetails] = await Promise.all([
-    getFeeCalculator(client, vault),
-    getTokenDetails(client, provisioner, token),
-  ]);
+  const tokenDetails = await getTokenDetails(client, provisioner, token);
   const multiplier = BigInt(tokenDetails[multiplierIndex]);
   const preMultiplierTokens = (tokensOut * MAX_BPS + multiplier - 1n) / multiplier;
 
-  return getPriceAndFeeCalculator(client, feeCalculator).read.convertTokenToUnitsIfActive([
+  return convertTokenToUnitsIfActive(
+    client,
+    feeCalculator,
+    feeCalculatorVersion,
     vault,
     token,
     preMultiplierTokens,
-    ROUNDING_CEIL,
-  ]);
+    Rounding.Ceil
+  );
 }
 
 async function getSyncRedeemMultiplier(
@@ -194,23 +204,22 @@ async function getSyncRedeemMultiplier(
 export async function getSyncRedeemTokenOut(
   client: PublicClient,
   provisioner: Address,
+  feeCalculator: Address,
+  feeCalculatorVersion: ContractVersion,
   vault: Address,
   token: Address,
   unitsIn: bigint
 ): Promise<bigint> {
-  const vaultContract = getContract({
-    address: vault,
-    abi: multiDepositorVaultAbi,
-    client,
-  });
-  const feeCalculator = await vaultContract.read.feeCalculator();
   const [tokenAmount, multiplier] = await Promise.all([
-    getPriceAndFeeCalculator(client, feeCalculator).read.convertUnitsToTokenIfActive([
+    convertUnitsToTokenIfActive(
+      client,
+      feeCalculator,
+      feeCalculatorVersion,
       vault,
       token,
       unitsIn,
-      ROUNDING_FLOOR,
-    ]),
+      Rounding.Floor
+    ),
     getSyncRedeemMultiplier(client, provisioner, vault, token, feeCalculator),
   ]);
 
@@ -220,6 +229,8 @@ export async function getSyncRedeemTokenOut(
 export async function getAsyncDepositUnitsOut(
   client: PublicClient,
   provisioner: Address,
+  feeCalculator: Address,
+  feeCalculatorVersion: ContractVersion,
   vault: Address,
   token: Address,
   tokensIn: bigint
@@ -227,6 +238,8 @@ export async function getAsyncDepositUnitsOut(
   return getDepositUnitsOut({
     client,
     provisioner,
+    feeCalculator,
+    feeCalculatorVersion,
     vault,
     token,
     tokensIn,
@@ -237,6 +250,8 @@ export async function getAsyncDepositUnitsOut(
 export async function getSyncDepositUnitsOut(
   client: PublicClient,
   provisioner: Address,
+  feeCalculator: Address,
+  feeCalculatorVersion: ContractVersion,
   vault: Address,
   token: Address,
   tokensIn: bigint
@@ -244,6 +259,8 @@ export async function getSyncDepositUnitsOut(
   return getDepositUnitsOut({
     client,
     provisioner,
+    feeCalculator,
+    feeCalculatorVersion,
     vault,
     token,
     tokensIn,
@@ -254,6 +271,8 @@ export async function getSyncDepositUnitsOut(
 export async function getAsyncRedeemTokenOut(
   client: PublicClient,
   provisioner: Address,
+  feeCalculator: Address,
+  feeCalculatorVersion: ContractVersion,
   vault: Address,
   token: Address,
   unitsIn: bigint
@@ -261,6 +280,8 @@ export async function getAsyncRedeemTokenOut(
   return getRedeemTokenOut({
     client,
     provisioner,
+    feeCalculator,
+    feeCalculatorVersion,
     vault,
     token,
     unitsIn,
@@ -271,6 +292,8 @@ export async function getAsyncRedeemTokenOut(
 export async function getAsyncWithdrawUnitsIn(
   client: PublicClient,
   provisioner: Address,
+  feeCalculator: Address,
+  feeCalculatorVersion: ContractVersion,
   vault: Address,
   token: Address,
   tokensOut: bigint
@@ -278,6 +301,8 @@ export async function getAsyncWithdrawUnitsIn(
   return getWithdrawUnitsIn({
     client,
     provisioner,
+    feeCalculator,
+    feeCalculatorVersion,
     vault,
     token,
     tokensOut,
@@ -288,16 +313,12 @@ export async function getAsyncWithdrawUnitsIn(
 export async function getSyncWithdrawUnitsIn(
   client: PublicClient,
   provisioner: Address,
+  feeCalculator: Address,
+  feeCalculatorVersion: ContractVersion,
   vault: Address,
   token: Address,
   tokensOut: bigint
 ): Promise<bigint> {
-  const vaultContract = getContract({
-    address: vault,
-    abi: multiDepositorVaultAbi,
-    client,
-  });
-  const feeCalculator = await vaultContract.read.feeCalculator();
   const multiplier = await getSyncRedeemMultiplier(
     client,
     provisioner,
@@ -307,12 +328,15 @@ export async function getSyncWithdrawUnitsIn(
   );
   const prePremiumTokens = (tokensOut * MAX_BPS + multiplier - 1n) / multiplier;
 
-  return getPriceAndFeeCalculator(client, feeCalculator).read.convertTokenToUnitsIfActive([
+  return convertTokenToUnitsIfActive(
+    client,
+    feeCalculator,
+    feeCalculatorVersion,
     vault,
     token,
     prePremiumTokens,
-    ROUNDING_CEIL,
-  ]);
+    Rounding.Ceil
+  );
 }
 
 export function depositTxRequest(

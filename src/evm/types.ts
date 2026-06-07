@@ -17,12 +17,8 @@ export interface EvmVaultDeployment {
   chain: 'evm';
   chainId: number;
   vaultAddress: Address;
-  /** Present for Aera multi-depositor vaults; absent for single-depositor and Morpho */
-  provisionerAddress?: Address;
   vaultType: 'single-depositor' | 'multi-depositor';
-  depositMode: 'sync' | 'async' | 'both';
   supplyToken: TokenInfo[];
-  contractVersion?: ContractVersion;
   /** Number of days before an async request deadline expires. Defaults to 3. */
   expirationDays?: number;
 }

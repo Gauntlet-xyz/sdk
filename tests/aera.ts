@@ -11,6 +11,9 @@ import {
   parseEther,
   parseUnits,
   parseEventLogs,
+  ContractFunctionExecutionError,
+  ContractFunctionRevertedError,
+  ContractFunctionZeroDataError,
   type Address,
   type PublicClient,
 } from 'viem';
@@ -21,8 +24,8 @@ import { getDepositReceiverApprovalTx } from '../src/evm/depositReceiverApproval
 import { getWithdrawTx } from '../src/evm/withdraw';
 import { VaultId } from '../src/evm/vaults';
 import { erc20Abi } from '../src/evm/abis/erc20';
-import { StalePriceError, UnsupportedFeatureError } from '../src/errors';
-import { resolveContractVersion } from '../src/evm/aeraContracts';
+import { StalePriceError, UnsupportedDepositModeError, UnsupportedFeatureError } from '../src/errors';
+import { resolveAeraRuntimeContracts, resolveContractVersion } from '../src/evm/aeraContracts';
 import { ContractVersion, type EvmVaultDeployment } from '../src/evm/types';
 import { getMultiDepositorVault } from '@gauntletnetworks/aera-v3-ts-sdk/multiDepositorVault';
 import {
@@ -49,29 +52,35 @@ const RECEIVER: Address = '0x00000000000000000000000000000000deadbeef';
 // NOTE: update this block number if the vault was not yet deployed at block 44_182_978
 const FORK_BLOCK = 44_182_978;
 
+const contractVersionAbi = [
+  {
+    type: 'function',
+    inputs: [],
+    name: 'version',
+    outputs: [{ name: '', internalType: 'string', type: 'string' }],
+    stateMutability: 'view',
+  },
+] as const;
+
+function versionExecutionError(cause: ConstructorParameters<typeof ContractFunctionExecutionError>[0]) {
+  return new ContractFunctionExecutionError(cause, {
+    abi: contractVersionAbi,
+    functionName: 'version',
+  });
+}
+
 // FiatTokenV2.2 stores balances in a mapping at storage slot 9.
 function usdcBalanceSlot(address: Address): `0x${string}` {
   return keccak256(encodeAbiParameters([{ type: 'address' }, { type: 'uint256' }], [address, 9n]));
 }
 
-// Minimal deployment fixture for resolveContractVersion tests. The provisioner
-// address is intentionally supplied by each test because it is the cache key.
-function aeraDeployment({
-  provisionerAddress,
-  contractVersion,
-}: {
-  provisionerAddress: Address;
-  contractVersion?: ContractVersion;
-}): EvmVaultDeployment {
+function aeraDeployment(): EvmVaultDeployment {
   return {
     chain: 'evm',
     chainId: base.id,
     vaultAddress: AERA_VAULT_ADDRESS,
-    provisionerAddress,
     vaultType: 'multi-depositor',
-    depositMode: 'both',
     supplyToken: [{ symbol: 'USDC', address: USDC_ADDRESS, decimals: 6 }],
-    ...(contractVersion ? { contractVersion } : {}),
   };
 }
 
@@ -79,16 +88,21 @@ function aeraDeployment({
 // resolveContractVersion reaches through viem's getContract(...).read.version().
 function publicClientWithContractVersion({
   version,
+  error,
   onVersionRead,
 }: {
   version?: string;
+  error?: Error;
   onVersionRead?: () => void;
 } = {}): PublicClient {
   return {
     readContract: async ({ functionName }: { functionName: string }) => {
       if (functionName !== 'version') throw new Error(`Unexpected read: ${functionName}`);
       onVersionRead?.();
-      if (version === undefined) throw new Error('version unavailable');
+      if (error) throw error;
+      if (version === undefined) {
+        throw versionExecutionError(new ContractFunctionZeroDataError({ functionName: 'version' }));
+      }
       return version;
     },
   } as unknown as PublicClient;
@@ -100,6 +114,10 @@ function publicClientWithV2Reads({
   maxPriceAge = 100n,
   maxDynamicPremiumBps = 0n,
   anchorTimestamp = 100n,
+  provisionerAddress = PROVISIONER_ADDRESS,
+  feeCalculatorAddress = '0x00000000000000000000000000000000000000f1',
+  provisionerVersion = '2.0',
+  feeCalculatorVersion = '2.0',
   asyncDepositMultiplier = 10_000,
   asyncRedeemMultiplier = 10_000,
   syncDepositMultiplier = 10_000,
@@ -110,23 +128,33 @@ function publicClientWithV2Reads({
   maxPriceAge?: bigint;
   maxDynamicPremiumBps?: bigint;
   anchorTimestamp?: bigint;
+  provisionerAddress?: Address;
+  feeCalculatorAddress?: Address;
+  provisionerVersion?: string;
+  feeCalculatorVersion?: string;
   asyncDepositMultiplier?: number;
   asyncRedeemMultiplier?: number;
   syncDepositMultiplier?: number;
   syncRedeemMultiplier?: number;
 } = {}): PublicClient {
   async function readContract({
+    address,
     functionName,
     args,
   }: {
+    address?: Address;
     functionName: string;
     args?: readonly unknown[];
   }) {
     switch (functionName) {
+      case 'provisioner':
+        return provisionerAddress;
       case 'allowance':
         return allowance;
       case 'feeCalculator':
-        return '0x00000000000000000000000000000000000000f1';
+        return feeCalculatorAddress;
+      case 'version':
+        return address === feeCalculatorAddress ? feeCalculatorVersion : provisionerVersion;
       case 'convertTokenToUnits':
         return 2_000n;
       case 'convertTokenToUnitsIfActive':
@@ -171,38 +199,20 @@ function publicClientWithV2Reads({
 }
 
 describe('aera', () => {
-  test('uses manifest contractVersion without probing provisioner version', async () => {
-    let versionReads = 0;
-
-    // Manifest metadata must win over a contradictory runtime version so custom manifests can opt in explicitly.
-    await expect(
-      resolveContractVersion(
-        publicClientWithContractVersion({
-          version: '2.0',
-          onVersionRead: () => versionReads++,
-        }),
-        aeraDeployment({
-          provisionerAddress: '0x0000000000000000000000000000000000000013',
-          contractVersion: ContractVersion.V1,
-        })
-      )
-    ).resolves.toBe(ContractVersion.V1);
-
-    expect(versionReads).toBe(0);
-  });
-
   test('detects runtime V2 provisioner version and caches result', async () => {
     let versionReads = 0;
     const v2Client = publicClientWithContractVersion({
       version: '2.0',
       onVersionRead: () => versionReads++,
     });
-    const v2Vault = aeraDeployment({
-      provisionerAddress: '0x0000000000000000000000000000000000000012',
-    });
+    const provisionerAddress = '0x0000000000000000000000000000000000000012';
 
-    await expect(resolveContractVersion(v2Client, v2Vault)).resolves.toBe(ContractVersion.V2);
-    await expect(resolveContractVersion(v2Client, v2Vault)).resolves.toBe(ContractVersion.V2);
+    await expect(resolveContractVersion(v2Client, provisionerAddress)).resolves.toBe(
+      ContractVersion.V2
+    );
+    await expect(resolveContractVersion(v2Client, provisionerAddress)).resolves.toBe(
+      ContractVersion.V2
+    );
 
     expect(versionReads).toBe(1);
   });
@@ -213,25 +223,95 @@ describe('aera', () => {
       version: '1.0',
       onVersionRead: () => versionReads++,
     });
-    const v1Vault = aeraDeployment({
-      provisionerAddress: '0x0000000000000000000000000000000000000011',
-    });
+    const provisionerAddress = '0x0000000000000000000000000000000000000011';
 
-    await expect(resolveContractVersion(v1Client, v1Vault)).resolves.toBe(ContractVersion.V1);
-    await expect(resolveContractVersion(v1Client, v1Vault)).resolves.toBe(ContractVersion.V1);
+    await expect(resolveContractVersion(v1Client, provisionerAddress)).resolves.toBe(
+      ContractVersion.V1
+    );
+    await expect(resolveContractVersion(v1Client, provisionerAddress)).resolves.toBe(
+      ContractVersion.V1
+    );
 
     expect(versionReads).toBe(1);
   });
 
   test('defaults to legacy V1 when provisioner version method is unavailable', async () => {
-    // V1 provisioners do not expose the V2 version() method, so an unreadable
-    // version keeps existing manifests on the legacy V1 path unless metadata opts into V2.
     await expect(
       resolveContractVersion(
         publicClientWithContractVersion(),
-        aeraDeployment({ provisionerAddress: '0x0000000000000000000000000000000000000010' })
+        '0x0000000000000000000000000000000000000010'
       )
     ).resolves.toBe(ContractVersion.V1);
+  });
+
+  test('defaults to legacy V1 when provisioner version call reverts without data', async () => {
+    await expect(
+      resolveContractVersion(
+        publicClientWithContractVersion({
+          error: versionExecutionError(
+            new ContractFunctionRevertedError({
+              abi: contractVersionAbi,
+              functionName: 'version',
+              data: '0x',
+              message: 'execution reverted',
+            })
+          ),
+        }),
+        '0x0000000000000000000000000000000000000016'
+      )
+    ).resolves.toBe(ContractVersion.V1);
+  });
+
+  test('does not default to V1 when version detection fails for other reasons', async () => {
+    const error = new Error('rpc unavailable');
+
+    await expect(
+      resolveContractVersion(
+        publicClientWithContractVersion({ error }),
+        '0x0000000000000000000000000000000000000015'
+      )
+    ).rejects.toBe(error);
+  });
+
+  test('does not default to V1 when version call reverts with a reason', async () => {
+    const error = versionExecutionError(
+      new ContractFunctionRevertedError({
+        abi: contractVersionAbi,
+        functionName: 'version',
+        data: '0x',
+        message: 'version lookup failed',
+      })
+    );
+
+    await expect(
+      resolveContractVersion(
+        publicClientWithContractVersion({ error }),
+        '0x0000000000000000000000000000000000000017'
+      )
+    ).rejects.toBe(error);
+  });
+
+  test('resolves live provisioner and fee calculator versions independently', async () => {
+    const provisionerAddress = '0x0000000000000000000000000000000000000013';
+    const feeCalculatorAddress = '0x0000000000000000000000000000000000000014';
+    const runtime = await resolveAeraRuntimeContracts(
+      publicClientWithV2Reads({
+        provisionerAddress,
+        feeCalculatorAddress,
+        provisionerVersion: '2.0',
+        feeCalculatorVersion: '1.0',
+      }),
+      aeraDeployment()
+    );
+
+    expect(runtime.provisioner).toEqual({
+      address: provisionerAddress,
+      version: ContractVersion.V2,
+    });
+    expect(runtime.feeCalculator).toEqual({
+      address: feeCalculatorAddress,
+      version: ContractVersion.V1,
+    });
   });
 
   test('builds V2 deposit receiver approval as a receiver-signed standalone transaction', async () => {
@@ -259,11 +339,8 @@ describe('aera', () => {
               chain: 'evm',
               chainId: base.id,
               vaultAddress: AERA_VAULT_ADDRESS,
-              provisionerAddress: PROVISIONER_ADDRESS,
               vaultType: 'multi-depositor',
-              depositMode: 'both',
               supplyToken: [{ symbol: 'USDC', address: USDC_ADDRESS, decimals: 6 }],
-              contractVersion: ContractVersion.V2,
             },
           ],
         },
@@ -302,11 +379,8 @@ describe('aera', () => {
               chain: 'evm',
               chainId: base.id,
               vaultAddress: AERA_VAULT_ADDRESS,
-              provisionerAddress: PROVISIONER_ADDRESS,
               vaultType: 'multi-depositor',
-              depositMode: 'both',
               supplyToken: [{ symbol: 'USDC', address: USDC_ADDRESS, decimals: 6 }],
-              contractVersion: ContractVersion.V2,
             },
           ],
         },
@@ -349,11 +423,8 @@ describe('aera', () => {
               chain: 'evm',
               chainId: base.id,
               vaultAddress: AERA_VAULT_ADDRESS,
-              provisionerAddress: PROVISIONER_ADDRESS,
               vaultType: 'multi-depositor',
-              depositMode: 'both',
               supplyToken: [{ symbol: 'USDC', address: USDC_ADDRESS, decimals: 6 }],
-              contractVersion: ContractVersion.V2,
             },
           ],
         },
@@ -398,11 +469,8 @@ describe('aera', () => {
               chain: 'evm' as const,
               chainId: base.id,
               vaultAddress: AERA_VAULT_ADDRESS,
-              provisionerAddress: PROVISIONER_ADDRESS,
               vaultType: 'multi-depositor' as const,
-              depositMode: 'both' as const,
               supplyToken: [{ symbol: 'USDC', address: USDC_ADDRESS, decimals: 6 }],
-              contractVersion: ContractVersion.V2,
             },
           ],
         },
@@ -454,11 +522,8 @@ describe('aera', () => {
               chain: 'evm',
               chainId: base.id,
               vaultAddress: AERA_VAULT_ADDRESS,
-              provisionerAddress: PROVISIONER_ADDRESS,
               vaultType: 'multi-depositor',
-              depositMode: 'both',
               supplyToken: [{ symbol: 'USDC', address: USDC_ADDRESS, decimals: 6 }],
-              contractVersion: ContractVersion.V2,
             },
           ],
         },
@@ -514,11 +579,8 @@ describe('aera', () => {
               chain: 'evm',
               chainId: base.id,
               vaultAddress: AERA_VAULT_ADDRESS,
-              provisionerAddress: PROVISIONER_ADDRESS,
               vaultType: 'multi-depositor',
-              depositMode: 'both',
               supplyToken: [{ symbol: 'USDC', address: USDC_ADDRESS, decimals: 6 }],
-              contractVersion: ContractVersion.V2,
             },
           ],
         },
@@ -563,11 +625,8 @@ describe('aera', () => {
               chain: 'evm',
               chainId: base.id,
               vaultAddress: AERA_VAULT_ADDRESS,
-              provisionerAddress: PROVISIONER_ADDRESS,
               vaultType: 'multi-depositor',
-              depositMode: 'both',
               supplyToken: [{ symbol: 'USDC', address: USDC_ADDRESS, decimals: 6 }],
-              contractVersion: ContractVersion.V2,
             },
           ],
         },
@@ -625,11 +684,8 @@ describe('aera', () => {
               chain: 'evm',
               chainId: base.id,
               vaultAddress: AERA_VAULT_ADDRESS,
-              provisionerAddress: PROVISIONER_ADDRESS,
               vaultType: 'multi-depositor',
-              depositMode: 'both',
               supplyToken: [{ symbol: 'USDC', address: USDC_ADDRESS, decimals: 6 }],
-              contractVersion: ContractVersion.V2,
             },
           ],
         },
@@ -823,9 +879,6 @@ describe('aera', () => {
         units,
       ]);
 
-      // withdraw.ts doesn't forward depositMode to the adapter, so isAsync is undefined
-      // and the adapter always takes the async path for Aera vaults
-
       // First call: no existing allowance for vault token → expect approve + requestRedeem
       const initialWithdrawSteps = await getWithdrawTx(client, {
         vaultId: VAULT_ID,
@@ -942,11 +995,8 @@ describe('aera', () => {
                 chain: 'evm',
                 chainId: base.id,
                 vaultAddress: AERA_VAULT_ADDRESS,
-                provisionerAddress: PROVISIONER_ADDRESS,
                 vaultType: 'multi-depositor',
-                depositMode: 'both',
                 supplyToken: [{ symbol: 'USDC', address: USDC_ADDRESS, decimals: 6 }],
-                contractVersion: ContractVersion.V1,
               },
             ],
           },
@@ -968,7 +1018,7 @@ describe('aera', () => {
           amount: 2_000n,
           depositMode: 'sync',
         })
-      ).rejects.toBeInstanceOf(UnsupportedFeatureError);
+      ).rejects.toBeInstanceOf(UnsupportedDepositModeError);
 
       await expect(
         getWithdrawTx(client, {
@@ -976,7 +1026,7 @@ describe('aera', () => {
           amount: 2_000n,
           depositMode: 'sync',
         })
-      ).rejects.toBeInstanceOf(UnsupportedFeatureError);
+      ).rejects.toBeInstanceOf(UnsupportedDepositModeError);
     });
   }, 60_000);
 
@@ -1002,11 +1052,8 @@ describe('aera', () => {
               chain: 'evm',
               chainId: base.id,
               vaultAddress: AERA_VAULT_ADDRESS,
-              provisionerAddress: PROVISIONER_ADDRESS,
               vaultType: 'multi-depositor',
-              depositMode: 'both',
               supplyToken: [{ symbol: 'USDC', address: USDC_ADDRESS, decimals: 6 }],
-              contractVersion: ContractVersion.V2,
             },
           ],
         },

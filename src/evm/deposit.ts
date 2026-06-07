@@ -6,14 +6,22 @@ import { encodeTransactionWithAttribution, PreparedTx } from '../attribution';
 import {
   AccountRequiredError,
   VaultNotFoundError,
-  UnsupportedDepositModeError,
   UnsupportedAssetError,
   InvalidSlippageBPSError,
 } from '../errors';
-import { resolveContractVersion } from './aeraContracts';
-import { ContractVersion } from './types';
+import {
+  resolveAeraRuntimeContracts,
+  resolveAeraTokenModeSupport,
+  type AeraRuntimeContracts,
+} from './aeraContracts';
 import { resolveVault } from './vaults';
 import { DEFAULT_BPS, MAX_BPS } from '../constants';
+import {
+  parseOperationMode,
+  resolveOperationMode,
+  resolveSyncOnlyOperationMode,
+  type OperationMode,
+} from './operationMode';
 
 export interface EvmDepositParams {
   vaultId: string;
@@ -22,7 +30,7 @@ export interface EvmDepositParams {
   chainId?: number;
   // Required for multiasset vaults, not utilized yet
   assetSymbol?: string;
-  /** Request async (queued) deposit. Only valid for vaults with depositMode 'async' or 'both'. */
+  /** Request async (queued) or sync deposit. Availability is read from live vault configuration. */
   depositMode?: string;
   // So a developer is able to specify a separate receiver than the tx sender
   receiver?: Address;
@@ -85,28 +93,8 @@ export async function getDepositTx(
 
   const { vault, protocol } = resolved;
 
-  if (params.depositMode === 'sync' && vault.depositMode === 'async') {
-    throw new UnsupportedDepositModeError(params.vaultId, 'sync', vault.depositMode);
-  }
-  if (params.depositMode === 'async' && vault.depositMode === 'sync') {
-    throw new UnsupportedDepositModeError(params.vaultId, 'async', vault.depositMode);
-  }
-  let modifiedDepositMode = params.depositMode;
-  if (params.depositMode === undefined) {
-    modifiedDepositMode = vault.depositMode === 'both' ? 'async' : vault.depositMode;
-  }
-
   const adapter = getAdapter(protocol);
   const publicClient = client.getPublicClient(chainId);
-  let spender = vault.provisionerAddress ?? vault.vaultAddress;
-  if (
-    protocol === 'aera' &&
-    vault.provisionerAddress &&
-    modifiedDepositMode === 'sync' &&
-    (await resolveContractVersion(publicClient, vault)) === ContractVersion.V2
-  ) {
-    spender = vault.vaultAddress;
-  }
   const token =
     vault.supplyToken.length > 1
       ? vault.supplyToken.find((tInfo) => tInfo.symbol === params.assetSymbol)
@@ -115,6 +103,30 @@ export async function getDepositTx(
   if (token === undefined) {
     throw new UnsupportedAssetError(params.assetSymbol ?? 'unknown', params.vaultId);
   }
+
+  const requestedDepositMode = parseOperationMode(params.vaultId, params.depositMode);
+  let modifiedDepositMode: OperationMode;
+  let aeraRuntime: AeraRuntimeContracts | undefined;
+
+  if (protocol === 'aera') {
+    aeraRuntime = await resolveAeraRuntimeContracts(publicClient, vault);
+    const tokenModeSupport = await resolveAeraTokenModeSupport(
+      publicClient,
+      aeraRuntime,
+      token.address
+    );
+    modifiedDepositMode = resolveOperationMode(params.vaultId, requestedDepositMode, {
+      async: tokenModeSupport.asyncDeposit,
+      sync: tokenModeSupport.syncDeposit,
+    });
+  } else {
+    modifiedDepositMode = resolveSyncOnlyOperationMode(params.vaultId, requestedDepositMode);
+  }
+
+  const spender =
+    protocol === 'aera' && modifiedDepositMode === 'async'
+      ? aeraRuntime!.provisioner.address
+      : vault.vaultAddress;
 
   // NOTE: this could be moved to the buildDeposit level
   const { sufficient } = await adapter.checkAllowance({
@@ -149,6 +161,7 @@ export async function getDepositTx(
     slippageBps: params.slippageBps ?? DEFAULT_BPS,
     solverTip: params.solverTip,
     maxPriceAge: params.maxPriceAge,
+    aeraRuntime,
   });
   steps.push(...depositSteps);
 

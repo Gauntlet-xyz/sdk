@@ -4,7 +4,9 @@ import {
   applySlippageDown,
   applySlippageUp,
   resolveContractVersion,
+  type AeraRuntimeContracts,
 } from '../aeraContracts';
+import { convertTokenToUnits, convertUnitsToToken } from '../aeraContracts/priceAndFeeCalculator';
 import * as provisionerV1 from '../aeraContracts/v1';
 import * as provisionerV2 from '../aeraContracts/v2';
 import {
@@ -36,25 +38,23 @@ export const convertTokenAmountToUnits = async (
   publicClient: PublicClient,
   tokenAmount: bigint,
   vaultAddress: Address,
-  tokenAddress: Address,
-  contractVersion: ContractVersion = ContractVersion.V1
+  tokenAddress: Address
 ) => {
   const vaultContract = getMultiDepositorVault(publicClient, vaultAddress);
   if (vaultContract === undefined) return;
 
   const calculatorAddress = await vaultContract.read.feeCalculator();
   if (!calculatorAddress) return;
+  const calculatorVersion = await resolveContractVersion(publicClient, calculatorAddress);
 
-  const calculatorContract =
-    contractVersion === ContractVersion.V2
-      ? provisionerV2.getPriceAndFeeCalculator(publicClient, calculatorAddress)
-      : provisionerV1.getPriceAndFeeCalculator(publicClient, calculatorAddress);
-
-  const unitsAmount = await calculatorContract.read.convertTokenToUnits([
+  const unitsAmount = await convertTokenToUnits(
+    publicClient,
+    calculatorAddress,
+    calculatorVersion,
     vaultAddress,
     tokenAddress,
-    tokenAmount,
-  ]);
+    tokenAmount
+  );
 
   return unitsAmount;
 };
@@ -63,21 +63,23 @@ export const convertUnitsToTokenAmount = async (
   publicClient: PublicClient,
   unitsAmount: bigint,
   vaultAddress: Address,
-  tokenAddress: Address,
-  contractVersion: ContractVersion = ContractVersion.V1
+  tokenAddress: Address
 ) => {
   const vaultContract = getMultiDepositorVault(publicClient, vaultAddress);
   if (vaultContract === undefined) return;
 
   const calculatorAddress = await vaultContract.read.feeCalculator();
   if (!calculatorAddress) return;
+  const calculatorVersion = await resolveContractVersion(publicClient, calculatorAddress);
 
-  const calculatorContract =
-    contractVersion === ContractVersion.V2
-      ? provisionerV2.getPriceAndFeeCalculator(publicClient, calculatorAddress)
-      : provisionerV1.getPriceAndFeeCalculator(publicClient, calculatorAddress);
-
-  return calculatorContract.read.convertUnitsToToken([vaultAddress, tokenAddress, unitsAmount]);
+  return convertUnitsToToken(
+    publicClient,
+    calculatorAddress,
+    calculatorVersion,
+    vaultAddress,
+    tokenAddress,
+    unitsAmount
+  );
 };
 
 function subtractSolverTip(tokenAmount: bigint, solverTip: bigint): bigint {
@@ -97,54 +99,114 @@ function getRequestDeadline(expirationDays?: number): bigint {
 
 async function getDepositUnitsOut({
   publicClient,
-  contractVersion,
-  provisioner,
+  runtime,
   vault,
   token,
   tokensIn,
   isAsync,
 }: {
   publicClient: PublicClient;
-  contractVersion: ContractVersion;
-  provisioner: Address;
+  runtime: AeraRuntimeContracts;
   vault: Address;
   token: Address;
   tokensIn: bigint;
   isAsync: boolean;
 }): Promise<bigint> {
-  if (contractVersion === ContractVersion.V2) {
+  if (runtime.provisioner.version === ContractVersion.V2) {
     return isAsync
-      ? provisionerV2.getAsyncDepositUnitsOut(publicClient, provisioner, vault, token, tokensIn)
-      : provisionerV2.getSyncDepositUnitsOut(publicClient, provisioner, vault, token, tokensIn);
+      ? provisionerV2.getAsyncDepositUnitsOut(
+          publicClient,
+          runtime.provisioner.address,
+          runtime.feeCalculator.address,
+          runtime.feeCalculator.version,
+          vault,
+          token,
+          tokensIn
+        )
+      : provisionerV2.getSyncDepositUnitsOut(
+          publicClient,
+          runtime.provisioner.address,
+          runtime.feeCalculator.address,
+          runtime.feeCalculator.version,
+          vault,
+          token,
+          tokensIn
+        );
   }
 
-  return provisionerV1.getAsyncDepositUnitsOut(publicClient, provisioner, vault, token, tokensIn);
+  return provisionerV1.getAsyncDepositUnitsOut(
+    publicClient,
+    runtime.provisioner.address,
+    runtime.feeCalculator.address,
+    runtime.feeCalculator.version,
+    vault,
+    token,
+    tokensIn
+  );
 }
 
 function getAsyncRedeemTokenOut(
   publicClient: PublicClient,
-  contractVersion: ContractVersion,
-  provisioner: Address,
+  runtime: AeraRuntimeContracts,
   vault: Address,
   token: Address,
   unitsIn: bigint
 ): Promise<bigint> {
-  return contractVersion === ContractVersion.V2
-    ? provisionerV2.getAsyncRedeemTokenOut(publicClient, provisioner, vault, token, unitsIn)
-    : provisionerV1.getAsyncRedeemTokenOut(publicClient, provisioner, vault, token, unitsIn);
+  return runtime.provisioner.version === ContractVersion.V2
+    ? provisionerV2.getAsyncRedeemTokenOut(
+        publicClient,
+        runtime.provisioner.address,
+        runtime.feeCalculator.address,
+        runtime.feeCalculator.version,
+        vault,
+        token,
+        unitsIn
+      )
+    : provisionerV1.getAsyncRedeemTokenOut(
+        publicClient,
+        runtime.provisioner.address,
+        runtime.feeCalculator.address,
+        runtime.feeCalculator.version,
+        vault,
+        token,
+        unitsIn
+      );
 }
 
 function getAsyncWithdrawUnitsIn(
   publicClient: PublicClient,
-  contractVersion: ContractVersion,
-  provisioner: Address,
+  runtime: AeraRuntimeContracts,
   vault: Address,
   token: Address,
   tokensOut: bigint
 ): Promise<bigint> {
-  return contractVersion === ContractVersion.V2
-    ? provisionerV2.getAsyncWithdrawUnitsIn(publicClient, provisioner, vault, token, tokensOut)
-    : provisionerV1.getAsyncWithdrawUnitsIn(publicClient, provisioner, vault, token, tokensOut);
+  return runtime.provisioner.version === ContractVersion.V2
+    ? provisionerV2.getAsyncWithdrawUnitsIn(
+        publicClient,
+        runtime.provisioner.address,
+        runtime.feeCalculator.address,
+        runtime.feeCalculator.version,
+        vault,
+        token,
+        tokensOut
+      )
+    : provisionerV1.getAsyncWithdrawUnitsIn(
+        publicClient,
+        runtime.provisioner.address,
+        runtime.feeCalculator.address,
+        runtime.feeCalculator.version,
+        vault,
+        token,
+        tokensOut
+      );
+}
+
+function requireAeraRuntime(runtime: AeraRuntimeContracts | undefined): AeraRuntimeContracts {
+  if (!runtime) {
+    throw new UnsupportedFeatureError('Aera: runtime contracts were not resolved');
+  }
+
+  return runtime;
 }
 
 export const aeraAdapter: EvmProtocolAdapter = {
@@ -160,23 +222,12 @@ export const aeraAdapter: EvmProtocolAdapter = {
       slippageBps = DEFAULT_BPS,
       solverTip = DEFAULT_SOLVER_TIP,
       maxPriceAge = DEFAULT_MAX_PRICE_AGE,
+      aeraRuntime,
     } = params;
 
-    if (!vault.provisionerAddress) {
-      // Not implemented because untested and clients won't need in V1
-      throw new UnimplementedFeatureError('Aera: single depositor vaults');
-      // single-depositor vault
-      /*return [
-        {
-          type: 'deposit',
-          // SDK only supports single asset deposit
-          ...depositTxRequest(vault.vaultAddress, [{ asset: asset.address, amount }], account),
-        },
-      ];*/
-    }
-
-    const contractVersion = await resolveContractVersion(publicClient, vault);
-    const isContractV2 = contractVersion === ContractVersion.V2;
+    const runtime = requireAeraRuntime(aeraRuntime);
+    const provisionerAddress = runtime.provisioner.address;
+    const isContractV2 = runtime.provisioner.version === ContractVersion.V2;
     if (receiver !== account && !isContractV2) {
       throw new UnsupportedFeatureError('Aera: separate receiver address on V1');
     }
@@ -188,8 +239,7 @@ export const aeraAdapter: EvmProtocolAdapter = {
     const tokensInForUnits = isAsync ? subtractSolverTip(amount, solverTip) : amount;
     const vaultUnits = await getDepositUnitsOut({
       publicClient,
-      contractVersion,
-      provisioner: vault.provisionerAddress,
+      runtime,
       vault: vault.vaultAddress,
       token: asset.address,
       tokensIn: tokensInForUnits,
@@ -205,7 +255,7 @@ export const aeraAdapter: EvmProtocolAdapter = {
           type: 'requestDeposit',
           ...(isContractV2
             ? provisionerV2.requestDepositTxRequest(
-                vault.provisionerAddress,
+                provisionerAddress,
                 asset.address,
                 amount,
                 minUnitsOut,
@@ -217,7 +267,7 @@ export const aeraAdapter: EvmProtocolAdapter = {
                 account
               )
             : provisionerV1.requestDepositTxRequest(
-                vault.provisionerAddress,
+                provisionerAddress,
                 asset.address,
                 amount,
                 minUnitsOut,
@@ -236,7 +286,7 @@ export const aeraAdapter: EvmProtocolAdapter = {
         {
           type: 'deposit',
           ...provisionerV2.depositTxRequest(
-            vault.provisionerAddress,
+            provisionerAddress,
             asset.address,
             amount,
             minUnitsOut,
@@ -261,32 +311,14 @@ export const aeraAdapter: EvmProtocolAdapter = {
       slippageBps = DEFAULT_BPS,
       solverTip = DEFAULT_SOLVER_TIP,
       maxPriceAge = DEFAULT_MAX_PRICE_AGE,
+      aeraRuntime,
     } = params;
 
-    const contractVersion = vault.provisionerAddress
-      ? await resolveContractVersion(publicClient, vault)
-      : ContractVersion.V1;
-    const isContractV2 = contractVersion === ContractVersion.V2;
+    const runtime = requireAeraRuntime(aeraRuntime);
+    const provisionerAddress = runtime.provisioner.address;
+    const isContractV2 = runtime.provisioner.version === ContractVersion.V2;
     if (receiver !== account && !isContractV2) {
       throw new UnsupportedFeatureError('Aera: separate receiver address on V1');
-    }
-
-    if (!vault.provisionerAddress) {
-      // Not implemented because untested and clients won't need in V1
-      throw new UnimplementedFeatureError('Aera: single depositor vaults');
-      //single-depositer vault
-      // TODO shares or amount ??
-      /*return [
-        {
-          type: 'withdraw',
-          // SDK only supports single asset deposit
-          ...withdrawTxRequest(
-            vault.vaultAddress,
-            [{ asset: asset.address, amount: shares }],
-            account
-          ),
-        },
-      ];*/
     }
 
     if (!isAsync && !isContractV2) {
@@ -318,7 +350,9 @@ export const aeraAdapter: EvmProtocolAdapter = {
         maxUnitsIn = applySlippageUp(
           await provisionerV2.getSyncWithdrawUnitsIn(
             publicClient,
-            vault.provisionerAddress,
+            provisionerAddress,
+            runtime.feeCalculator.address,
+            runtime.feeCalculator.version,
             vault.vaultAddress,
             asset.address,
             params.amount
@@ -333,7 +367,9 @@ export const aeraAdapter: EvmProtocolAdapter = {
         minTokenOut = applySlippageDown(
           await provisionerV2.getSyncRedeemTokenOut(
             publicClient,
-            vault.provisionerAddress,
+            provisionerAddress,
+            runtime.feeCalculator.address,
+            runtime.feeCalculator.version,
             vault.vaultAddress,
             asset.address,
             shares
@@ -353,8 +389,7 @@ export const aeraAdapter: EvmProtocolAdapter = {
       } else if ('amount' in params && params.amount != null) {
         shares = await getAsyncWithdrawUnitsIn(
           publicClient,
-          contractVersion,
-          vault.provisionerAddress,
+          runtime,
           vault.vaultAddress,
           asset.address,
           params.amount + solverTip
@@ -367,8 +402,7 @@ export const aeraAdapter: EvmProtocolAdapter = {
 
       const tokenOutBeforeTip = await getAsyncRedeemTokenOut(
         publicClient,
-        contractVersion,
-        vault.provisionerAddress,
+        runtime,
         vault.vaultAddress,
         asset.address,
         shares
@@ -391,7 +425,7 @@ export const aeraAdapter: EvmProtocolAdapter = {
         publicClient,
         token: vault.vaultAddress,
         owner: account,
-        spender: vault.provisionerAddress,
+        spender: provisionerAddress,
         amount: shares,
       });
 
@@ -399,7 +433,7 @@ export const aeraAdapter: EvmProtocolAdapter = {
         steps.push(
           this.buildApproval({
             token: vault.vaultAddress,
-            spender: vault.provisionerAddress,
+            spender: provisionerAddress,
             amount: shares,
             account,
           })
@@ -414,7 +448,7 @@ export const aeraAdapter: EvmProtocolAdapter = {
           type: 'requestRedeem',
           ...(isContractV2
             ? provisionerV2.requestRedeemTxRequest(
-                vault.provisionerAddress,
+                provisionerAddress,
                 asset.address,
                 shares,
                 minTokenOut,
@@ -426,7 +460,7 @@ export const aeraAdapter: EvmProtocolAdapter = {
                 account
               )
             : provisionerV1.requestRedeemTxRequest(
-                vault.provisionerAddress,
+                provisionerAddress,
                 asset.address,
                 shares,
                 minTokenOut,
@@ -446,7 +480,7 @@ export const aeraAdapter: EvmProtocolAdapter = {
         {
           type: 'withdraw',
           ...provisionerV2.withdrawTxRequest(
-            vault.provisionerAddress,
+            provisionerAddress,
             asset.address,
             params.amount,
             maxUnitsIn,
@@ -466,7 +500,7 @@ export const aeraAdapter: EvmProtocolAdapter = {
       {
         type: 'redeem',
         ...provisionerV2.redeemTxRequest(
-          vault.provisionerAddress,
+          provisionerAddress,
           asset.address,
           shares,
           minTokenOut,
