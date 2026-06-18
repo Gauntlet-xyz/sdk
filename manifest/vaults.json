@@ -2074,6 +2074,27 @@
           ]
         }
       ]
+    },
+        {
+      "vaultId": "gtlpexav",
+      "name": "gtLPEXAV",
+      "protocol": "aera",
+      "strategy": "Gauntlet x EXA LP Vault",
+      "deployments": [
+        {
+          "chain": "evm",
+          "chainId": 8453,
+          "vaultAddress": "0x0Be859C41b0B5c72eC966681FBDDE6Aae3C8BCcD",
+          "vaultType": "multi-depositor",
+          "supplyToken": [
+            {
+              "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+              "symbol": "USDC",
+              "decimals": 6
+            }
+          ]
+        }
+      ]
     }
   ]
 }
