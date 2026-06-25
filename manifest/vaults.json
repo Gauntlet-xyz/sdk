@@ -2095,6 +2095,27 @@
           ]
         }
       ]
+    },
+    {
+      "vaultId": "gtlpexae",
+      "name": "gtLPEXAE",
+      "protocol": "aera",
+      "strategy": "Gauntlet x EXA ETH LP Vault",
+      "deployments": [
+        {
+          "chain": "evm",
+          "chainId": 1,
+          "vaultAddress": "0x694f9D667bd09DeE5C3c3d79Ed46Cc4C3611764F",
+          "vaultType": "multi-depositor",
+          "supplyToken": [
+            {
+              "address": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+              "symbol": "WETH",
+              "decimals": 18
+            }
+          ]
+        }
+      ]
     }
   ]
 }
