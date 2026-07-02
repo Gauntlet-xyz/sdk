@@ -2116,6 +2116,48 @@
           ]
         }
       ]
+    },
+    {
+      "vaultId": "stgprime",
+      "name": "Gauntlet Levered PRIME Staging",
+      "protocol": "aera",
+      "strategy": "Levered PRIME Looping",
+      "deployments": [
+        {
+          "chain": "evm",
+          "chainId": 1,
+          "vaultAddress": "0x8F2d98522B977C33a1EFDD4e25b0B045777B2193",
+          "vaultType": "multi-depositor",
+          "supplyToken": [
+            {
+              "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+              "symbol": "USDC",
+              "decimals": 6
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "vaultId": "devprime",
+      "name": "Gauntlet Levered PRIME Dev",
+      "protocol": "aera",
+      "strategy": "Levered PRIME Looping",
+      "deployments": [
+        {
+          "chain": "evm",
+          "chainId": 1,
+          "vaultAddress": "0x9E96A8A209D423F422293FCD5534a6b36cc376dA",
+          "vaultType": "multi-depositor",
+          "supplyToken": [
+            {
+              "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+              "symbol": "USDC",
+              "decimals": 6
+            }
+          ]
+        }
+      ]
     }
   ]
 }
