@@ -2,6 +2,8 @@ export { GauntletClient, AttributionMode } from './client';
 export type { GauntletClientConfig } from './client';
 export { ContractVersion } from './evm/types';
 
+export * from './api';
+
 export type {
   VaultInfo,
   VaultDeployment,

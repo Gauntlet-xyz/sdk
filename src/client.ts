@@ -1,5 +1,6 @@
 import { type PublicClient, type WalletClient } from 'viem';
 import bundledManifest from '../manifest/vaults.json';
+import { GauntletApi } from './api/client';
 import { RpcNotConfiguredError, UnimplementedFeatureError } from './errors';
 import type { VaultManifest } from './evm/types';
 import { base } from 'viem/chains';
@@ -20,7 +21,10 @@ export enum AttributionMode {
 export type ChainId = string | number;
 
 export interface GauntletClientConfig {
+  /** Gaia API key, sent as `x-api-key` on `client.api` requests. Anonymous access is rate-limited. */
   apiKey?: string;
+  /** Override the Gaia API origin (e.g. a same-origin proxy route). Defaults to `https://api.gauntlet.xyz`. */
+  apiUrl?: string;
   /** Map of chainId → PublicClient, e.g. { [base.id]: createPublicClient(...) } */
   evmClients?: Record<ChainId, PublicClient>;
   attributionMode?: AttributionMode;
@@ -56,12 +60,13 @@ export interface GauntletClientConfig {
  * ```
  */
 export class GauntletClient {
-  // used for future core api and encoding attribution
   readonly apiKey?: string;
   readonly builderCode?: string;
   readonly attributionMode: AttributionMode;
   readonly evmClients: Record<ChainId, PublicClient>;
   readonly wallet?: WalletClient;
+  /** Typed client for the Gaia REST API (vaults, positions, activity, tvl, prices). */
+  readonly api: GauntletApi;
 
   private _manifest: VaultManifest = bundledManifest as VaultManifest;
 
@@ -71,6 +76,7 @@ export class GauntletClient {
     this.attributionMode = config.attributionMode ?? AttributionMode.PUBLIC;
     this.builderCode = config.builderCode;
     this.wallet = config.wallet;
+    this.api = new GauntletApi({ apiKey: config.apiKey, apiUrl: config.apiUrl });
   }
 
   get manifest(): Promise<VaultManifest> {

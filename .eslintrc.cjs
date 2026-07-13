@@ -10,5 +10,5 @@ module.exports = {
     ...nextOff,
     '@typescript-eslint/no-explicit-any': 'warn',
   },
-  ignorePatterns: ['src/generated/*/**'],
+  ignorePatterns: ['src/generated/*/**', 'src/api/generated.ts'],
 };

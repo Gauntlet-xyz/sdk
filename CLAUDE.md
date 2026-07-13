@@ -21,6 +21,14 @@ yarn test tests/aera.ts
 
 Tests require an RPC endpoint. Set `ALCHEMY_API_KEY` or `FORK_URL_<chainId>` (e.g. `FORK_URL_8453` for Base) before running fork tests. Tests use Anvil under the hood — each test suite forks a live chain at a pinned block number.
 
+## Docs Parity
+
+Before calling any task complete, check that the public docs still match the SDK's actual surface and behavior:
+- `<repo-root>/gauntlet-docs/sdk/` (`overview.mdx`, `installation.mdx`, `reference.mdx`, `examples.mdx`) — Mintlify docs synced to the public `Gauntlet-xyz/gauntlet-docs` repo
+- `README.md` in this package
+
+If exports, signatures, options, error types, or documented behavior changed, update the docs in the same PR.
+
 ## Architecture
 
 The SDK is a pure TypeScript ESM library (no framework). It compiles to `dist/` and ships two entry points:
