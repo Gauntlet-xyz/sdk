@@ -2118,6 +2118,27 @@
       ]
     },
     {
+      "vaultId": "prime",
+      "name": "Gauntlet Levered PRIME",
+      "protocol": "aera",
+      "strategy": "Levered PRIME Looping",
+      "deployments": [
+        {
+          "chain": "evm",
+          "chainId": 1,
+          "vaultAddress": "0xc4C7Ea9af473046559F0492bbBa186A2E043fe94",
+          "vaultType": "multi-depositor",
+          "supplyToken": [
+            {
+              "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+              "symbol": "USDC",
+              "decimals": 6
+            }
+          ]
+        }
+      ]
+    },
+    {
       "vaultId": "stgprime",
       "name": "Gauntlet Levered PRIME Staging",
       "protocol": "aera",
