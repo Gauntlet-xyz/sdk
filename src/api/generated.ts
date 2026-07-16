@@ -203,7 +203,7 @@ export interface paths {
         };
         /**
          * List Gauntlet-curated vaults
-         * @description Returns identification-only rows for every Gauntlet vault the indexer knows about, ordered most-recent-first. Use `/{vault_id}` for current metrics, `/{vault_id}/definition` for the full vault definition, `/{vault_id}/timeseries` for history.
+         * @description Returns identification-only rows for the admin-curated visible vaults, ordered most-recent-first; pass `?include_hidden=true` for every enabled vault (hidden included, disabled never). Use `/{vault_id}` for current metrics, `/{vault_id}/definition` for the full vault definition, `/{vault_id}/timeseries` for history.
          *
          *     Cursor-paginated, but the default page size is the cap so most callers don't need to think about it — pass `meta.next_cursor` back as `?next=` only if the result exceeds 1000 vaults.
          */
@@ -1017,6 +1017,8 @@ export interface operations {
     list_vaults: {
         parameters: {
             query?: {
+                /** @description Include hidden (enabled but unlisted) vaults alongside visible ones. Disabled vaults are never listed. */
+                include_hidden?: boolean;
                 /** @description Page size (1–1000, default 1000). */
                 limit?: number;
                 /** @description Opaque cursor from previous `meta.next_cursor`. */
