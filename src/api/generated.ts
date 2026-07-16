@@ -344,6 +344,14 @@ export interface components {
             symbol: string;
             timestamp: string;
         };
+        PartialResponseError: {
+            /** @description Machine-readable error code for the isolated item failure. */
+            code: string;
+            /** @description Human-readable error message. */
+            message: string;
+            /** @description Resource that failed inside the aggregate response, when known. */
+            resource_id?: string | null;
+        };
         PnlBreakdown: {
             /** @description Locked-in PnL from past disposals. */
             realized: components["schemas"]["AmountPair"];
@@ -400,6 +408,8 @@ export interface components {
             limit: number;
             /** @description Set when more pages exist; pass back as `?next=`. */
             next_cursor?: string | null;
+            /** @description Item-scoped failures isolated from an aggregate response. */
+            partial_errors?: components["schemas"]["PartialResponseError"][] | null;
             /** Format: date-time */
             refreshed_at: string;
             request_id: string;
