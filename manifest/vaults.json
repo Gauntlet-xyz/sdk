@@ -2158,6 +2158,27 @@
           ]
         }
       ]
+    },
+    {
+      "vaultId": "gtlpraen",
+      "name": "gtLPRAEN",
+      "protocol": "aera",
+      "strategy": "Gauntlet x Raenest Base LP Vault",
+      "deployments": [
+        {
+          "chain": "evm",
+          "chainId": 8453,
+          "vaultAddress": "0x970173b2666736ebe040e2C3bef6c62664D9b0B9",
+          "vaultType": "multi-depositor",
+          "supplyToken": [
+            {
+              "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+              "symbol": "USDC",
+              "decimals": 6
+            }
+          ]
+        }
+      ]
     }
   ]
 }
