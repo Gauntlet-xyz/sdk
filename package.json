@@ -1,6 +1,6 @@
 {
   "name": "@gauntlet-xyz/sdk",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Official Gauntlet SDK for vault deposits, withdrawals, and attribution",
   "license": "MIT",
   "keywords": [
