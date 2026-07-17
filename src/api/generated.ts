@@ -276,6 +276,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/vaults/featured": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List featured vaults
+         * @description Returns the admin-curated featured shortlist, one card per logical vault in curated order: display name, marketing description, deployed chains (highest-TVL first), supply token, aggregate TVL, and the highest 7/30/90-day APY across deployments. `vault_ids` carries per-deployment `{chainId}:{address}` ids for `/v1/vaults/{vault_id}` links, in the same order as `chains`.
+         */
+        get: operations["list_featured_vaults"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -314,6 +334,13 @@ export interface components {
             /** Format: int64 */
             latest_timestamp: number;
         };
+        /**
+         * @description USD amount on curated aggregates: decimal string, `null` when the
+         *     pricing service is not configured.
+         */
+        CuratedTvl: {
+            usd?: string | null;
+        };
         ErrorBody: {
             /** @description Machine-readable error code (e.g. `NOT_FOUND`, `UNAUTHORIZED`) */
             code: string;
@@ -324,6 +351,63 @@ export interface components {
         /** @description Standard error response envelope returned on 4xx/5xx */
         ErrorResponse: {
             error: components["schemas"]["ErrorBody"];
+        };
+        FeaturedVault: {
+            /**
+             * Format: double
+             * @description Highest 7-day APY across the vault's deployments, fraction
+             *     (0.0573 = 5.73%). `null` while every window is warming up.
+             */
+            apy_7d_max?: number | null;
+            /**
+             * Format: double
+             * @description Highest 30-day APY across the vault's deployments.
+             */
+            apy_30d_max?: number | null;
+            /**
+             * Format: double
+             * @description Highest 90-day APY across the vault's deployments.
+             */
+            apy_90d_max?: number | null;
+            /** @description Chain slugs the vault is deployed on, highest-TVL first. */
+            chains: string[];
+            /**
+             * @description Curated marketing description; `null` when the curator hasn't
+             *     written one.
+             */
+            description?: string | null;
+            /** @description Curated display name. */
+            name: string;
+            /**
+             * @description Card-length copy (e.g. "Conservative lending yield with low
+             *     risk"). `null` when the curator hasn't written any; consumers
+             *     decide whether to fall back to `description`.
+             */
+            short_description?: string | null;
+            /** @description Admin registry slug for the logical vault (stable identifier). */
+            slug: string;
+            /**
+             * @description Supply (numeraire) token symbol, from the highest-TVL deployment
+             *     that reports one.
+             */
+            supply_token?: string | null;
+            /** @description Aggregate TVL across the vault's deployments ("Total Supply"). */
+            tvl: components["schemas"]["CuratedTvl"];
+            /**
+             * Format: date-time
+             * @description Most recent indexer snapshot among the vault's deployments;
+             *     `null` when no deployment carried a usable timestamp.
+             */
+            updated_at?: string | null;
+            /**
+             * @description Per-deployment API vault ids (`{chainId}:{address}`, same order
+             *     as `chains`) for `/v1/vaults/{vault_id}` links.
+             */
+            vault_ids: string[];
+        };
+        FeaturedVaultsResponse: {
+            data: components["schemas"]["FeaturedVault"][];
+            meta: components["schemas"]["ListMeta"];
         };
         HealthResponse: {
             status: string;
@@ -343,6 +427,16 @@ export interface components {
             price: components["schemas"]["PriceValue"];
             symbol: string;
             timestamp: string;
+        };
+        ListMeta: {
+            /**
+             * Format: int64
+             * @description Rows in this response.
+             */
+            count: number;
+            /** Format: date-time */
+            refreshed_at: string;
+            request_id: string;
         };
         PartialResponseError: {
             /** @description Machine-readable error code for the isolated item failure. */
@@ -1191,6 +1285,44 @@ export interface operations {
             };
             /** @description Invalid parameters */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_featured_vaults: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Featured vault cards */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeaturedVaultsResponse"];
+                };
+            };
+            /** @description Missing or invalid auth */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Data source unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
