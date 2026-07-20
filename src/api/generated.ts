@@ -84,6 +84,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/strategies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List curated strategies
+         * @description Returns one card per curated strategy (Earn, Prime Lending, …) with aggregate metrics across the strategy's visible vaults: total TVL in USD, the highest 7/30/90-day APY ("APY up to"), and the vault count. TVL sums only vaults whose numeraire has a USD price; unpriced vaults still count toward `vault_count` and the APY maxes. Strategy membership and visibility are curated by Gauntlet; metrics come from the indexer and are refreshed continuously. Ordered by curated display order.
+         */
+        get: operations["list_strategies"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/tvl": {
         parameters: {
             query?: never;
@@ -428,12 +448,18 @@ export interface components {
             symbol: string;
             timestamp: string;
         };
+        /**
+         * @description Envelope for unpaginated list endpoints: `count` but no paging
+         *     fields.
+         */
         ListMeta: {
             /**
              * Format: int64
-             * @description Rows in this response.
+             * @description Number of items in this response.
              */
             count: number;
+            /** @description Item-scoped failures isolated from an aggregate response. */
+            partial_errors?: components["schemas"]["PartialResponseError"][] | null;
             /** Format: date-time */
             refreshed_at: string;
             request_id: string;
@@ -486,6 +512,62 @@ export interface components {
             native?: number | null;
             /** Format: double */
             usd?: number | null;
+        };
+        StrategyCard: {
+            /**
+             * Format: double
+             * @description Highest 7-day APY across the strategy's vaults ("APY Up To"),
+             *     fraction (0.0953 = 9.53%). `null` while every vault's window is
+             *     still warming up.
+             */
+            apy_7d_max?: number | null;
+            /**
+             * Format: double
+             * @description Highest 30-day APY across the strategy's vaults.
+             */
+            apy_30d_max?: number | null;
+            /**
+             * Format: double
+             * @description Highest 90-day APY across the strategy's vaults.
+             */
+            apy_90d_max?: number | null;
+            /** @description Marketing description of the strategy. */
+            description?: string | null;
+            /**
+             * @description Strategy identifier from the admin vocabulary (e.g. `earn`,
+             *     `prime_lending`).
+             */
+            id: string;
+            /** @description Display name (e.g. "Prime Lending"). */
+            name: string;
+            /**
+             * @description Card-length copy (e.g. "Conservative lending yield with low
+             *     risk"). `null` when the curator hasn't written any; consumers
+             *     decide whether to fall back to `description`.
+             */
+            short_description?: string | null;
+            /**
+             * @description Aggregate TVL across the strategy's priced vaults ("Total
+             *     Supply"). Vaults whose numeraire has no USD price are left out of
+             *     the sum but still count toward `vault_count` and the APY maxes.
+             */
+            tvl: components["schemas"]["CuratedTvl"];
+            /**
+             * Format: date-time
+             * @description Most recent indexer snapshot among the strategy's vaults; `null`
+             *     in the degenerate case where no matched row carried a timestamp.
+             */
+            updated_at?: string | null;
+            /**
+             * Format: int64
+             * @description Visible curated vaults in this strategy that matched at least one
+             *     indexed deployment.
+             */
+            vault_count: number;
+        };
+        StrategyListResponse: {
+            data: components["schemas"]["StrategyCard"][];
+            meta: components["schemas"]["ListMeta"];
         };
         TimeseriesMeta: {
             /**
@@ -867,6 +949,44 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    list_strategies: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of strategy cards */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StrategyListResponse"];
+                };
+            };
+            /** @description Missing or invalid auth */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Data source unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
         };
     };
