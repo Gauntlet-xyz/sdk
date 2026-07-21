@@ -396,7 +396,11 @@ export interface components {
              *     written one.
              */
             description?: string | null;
-            /** @description Curated display name. */
+            /**
+             * @description Curated display name; falls back to the registry id when the
+             *     curator hasn't named the vault yet. `vault_ids` carries the
+             *     stable identifiers.
+             */
             name: string;
             /**
              * @description Card-length copy (e.g. "Conservative lending yield with low
@@ -404,8 +408,6 @@ export interface components {
              *     decide whether to fall back to `description`.
              */
             short_description?: string | null;
-            /** @description Admin registry slug for the logical vault (stable identifier). */
-            slug: string;
             /**
              * @description Supply (numeraire) token symbol, from the highest-TVL deployment
              *     that reports one.
