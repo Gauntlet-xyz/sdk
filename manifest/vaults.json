@@ -2076,15 +2076,15 @@
       ]
     },
         {
-      "vaultId": "gtlpexav",
-      "name": "gtLPEXAV",
+      "vaultId": "exausd",
+      "name": "exaUSD",
       "protocol": "aera",
-      "strategy": "Gauntlet x EXA LP Vault",
+      "strategy": "Institutional USD Yield Vault",
       "deployments": [
         {
           "chain": "evm",
           "chainId": 8453,
-          "vaultAddress": "0x0Be859C41b0B5c72eC966681FBDDE6Aae3C8BCcD",
+          "vaultAddress": "0xDDDFf4bE1a90CD6F05CE1e977c674ff3aa556C97",
           "vaultType": "multi-depositor",
           "supplyToken": [
             {
@@ -2097,15 +2097,15 @@
       ]
     },
     {
-      "vaultId": "gtlpexae",
-      "name": "gtLPEXAE",
+      "vaultId": "exaeth",
+      "name": "exaETH",
       "protocol": "aera",
-      "strategy": "Gauntlet x EXA ETH LP Vault",
+      "strategy": "Institutional ETH Yield Vault",
       "deployments": [
         {
           "chain": "evm",
           "chainId": 1,
-          "vaultAddress": "0x694f9D667bd09DeE5C3c3d79Ed46Cc4C3611764F",
+          "vaultAddress": "0x2B02DA0A074b690075f0b8E6921e2526B0Ff7896",
           "vaultType": "multi-depositor",
           "supplyToken": [
             {
