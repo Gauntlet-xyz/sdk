@@ -14,6 +14,8 @@ import {
   ContractFunctionExecutionError,
   ContractFunctionRevertedError,
   ContractFunctionZeroDataError,
+  decodeErrorResult,
+  toFunctionSelector,
   type Address,
   type PublicClient,
 } from 'viem';
@@ -566,6 +568,32 @@ describe('aera', () => {
     expect(redeem.tx.type).toBe('redeem');
     expect(redeem.tx.args[1]).toBe(1_000n);
     expect(redeem.tx.args[2]).toBe(950n);
+  });
+
+  test('decodes V2 provisioner revert selectors from the shipped ABI', () => {
+    // The portfolio maps these sync redeem reverts to user-facing copy; keeping them in the
+    // shipped ABI lets viem decode `errorName` directly instead of raw selector data.
+    const syncRedeemErrorNames = [
+      'Aera__MaxUnitsInExceeded',
+      'Aera__MinTokensOutNotMet',
+      'Aera__PriceAndFeeCalculatorVaultPaused',
+      'Aera__PullFundsSubmitDataNotSet',
+      'Aera__SolvingPaused',
+      'Aera__SyncRedeemDisabled',
+      'Aera__SyncRedeemEpochCapExceeded',
+      'Aera__SyncRedeemMaxPriceAgeExceeded',
+      'Aera__TokensZero',
+      'Aera__UnitsLocked',
+      'Aera__UnitsZero',
+    ] as const;
+
+    for (const errorName of syncRedeemErrorNames) {
+      const decoded = decodeErrorResult({
+        abi: provisionerV2Abi,
+        data: toFunctionSelector(`${errorName}()`),
+      });
+      expect(decoded.errorName).toBe(errorName);
+    }
   });
 
   test('rejects V2 sync withdraw and redeem quotes when sync redeem price is stale', async () => {
