@@ -135,7 +135,7 @@ export interface paths {
          * Get user wallet activity (deposits, withdrawals, transfers)
          * @description Immutable log of on-chain events that affected the wallet's vault position. Each row is a frozen-in-time record; rows never mutate after emission.
          *
-         *     `?vault_id=` narrows to one vault; omitted = activity across every vault the wallet has touched. Each row echoes its `vault_id` so wallet-wide consumers can distinguish per-vault activity.
+         *     `?vault_id=` narrows to one vault; omitted = activity across every vault the wallet has touched, scoped to the Gauntlet-curated vault set (listed vaults by default, `include_hidden=true` widens to hidden vaults; disabled vaults never appear). Each row echoes its `vault_id` so wallet-wide consumers can distinguish per-vault activity.
          *
          *     Async deposit/redeem lifecycles emit multiple rows (one at request time with `status=pending`, a later one with `status=settled` or `refunded`). Consumers correlate them via `request_hash` to follow a single action across rows. Sync flows emit one row directly in the settled state.
          *
@@ -159,7 +159,7 @@ export interface paths {
         };
         /**
          * Get all current positions for a wallet
-         * @description Returns every vault position the wallet currently holds or has pending exposure in (pending deposit or redeem). Fully-exited positions (zero shares, no pending escrow) are excluded.
+         * @description Returns every vault position the wallet currently holds or has pending exposure in (pending deposit or redeem). Fully-exited positions (zero shares, no pending escrow) are excluded. Scoped to the Gauntlet-curated vault set: only positions in publicly listed vaults are returned by default, `include_hidden=true` widens to hidden (enabled but unlisted) vaults, and positions in disabled vaults are never returned.
          *
          *     All monetary metrics include a `usd` field (null when pricing is unavailable). `value.usd` and `pending_deposit_assets.usd` use the current spot price. `cost_basis.usd` and `pnl.realized.usd` are computed by replaying on-chain events against the token's historical price series — the same method used by `GET /v1/users/{wallet}/positions/{vault_id}`. `pnl.unrealized.usd`, `pnl.total.usd`, and `roi_pct.usd` are derived from those.
          *
@@ -1038,6 +1038,8 @@ export interface operations {
     get_user_activity: {
         parameters: {
             query?: {
+                /** @description Wallet-wide feeds only: include activity in hidden (enabled but unlisted) vaults alongside visible ones. Activity in disabled vaults is never returned. Ignored when `vault_id` is set. */
+                include_hidden?: boolean;
                 /** @description Page size (1–1000, default 100). */
                 limit?: number;
                 /** @description Opaque cursor from previous `meta.next_cursor`. */
@@ -1088,6 +1090,8 @@ export interface operations {
     get_user_all_positions: {
         parameters: {
             query?: {
+                /** @description Include positions in hidden (enabled but unlisted) vaults alongside visible ones. Positions in disabled vaults are never returned. */
+                include_hidden?: boolean;
                 /** @description Page size (1–500, default 100). */
                 limit?: number;
                 /** @description Opaque cursor from previous `meta.next_cursor`. */
