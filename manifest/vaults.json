@@ -2200,6 +2200,27 @@
           ]
         }
       ]
+    },
+    {
+      "vaultId": "devusdhy",
+      "name": "devUSDhy",
+      "protocol": "aera",
+      "strategy": "Gauntlet High Yield Dev",
+      "deployments": [
+        {
+          "chain": "evm",
+          "chainId": 1,
+          "vaultAddress": "0xeAf1f4C98635b56021a3EAabC08Fca3b24214084",
+          "vaultType": "single-depositor",
+          "supplyToken": [
+            {
+              "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+              "symbol": "USDC",
+              "decimals": 6
+            }
+          ]
+        }
+      ]
     }
   ]
 }
