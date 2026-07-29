@@ -19,6 +19,7 @@ export type TvlResponse = Schemas['TvlResponse'];
 export type LatestPriceResponse = Schemas['LatestPriceResponse'];
 export type PriceTimeseriesResponse = Schemas['TimeseriesResponse'];
 export type TokenRef = Schemas['TokenRef'];
+export type PartialResponseError = Schemas['PartialResponseError'];
 export type AmountPair = Schemas['AmountPair'];
 export type TimeseriesMeta = Schemas['TimeseriesMeta'];
 export type HealthResponse = Schemas['HealthResponse'];
@@ -121,8 +122,11 @@ export class GauntletApi {
   }
 
   /** GET /v1/users/{wallet}/positions — all of a wallet's indexed positions with PnL. */
-  positions(walletAddress: string): Promise<UserAllPositionsResponse> {
-    return this.get(`/v1/users/${encodeURIComponent(walletAddress)}/positions`);
+  positions(walletAddress: string, options: PageOptions = {}): Promise<UserAllPositionsResponse> {
+    return this.get(`/v1/users/${encodeURIComponent(walletAddress)}/positions`, {
+      next: options.next,
+      limit: options.limit,
+    });
   }
 
   /** GET /v1/users/{wallet}/positions/{vault_id} — one position with PnL breakdown. */

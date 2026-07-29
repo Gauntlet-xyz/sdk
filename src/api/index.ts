@@ -7,6 +7,7 @@ export type {
   LatestPriceOptions,
   LatestPriceResponse,
   PageOptions,
+  PartialResponseError,
   PositionTimeseriesPoint,
   PriceTimeseriesOptions,
   PriceTimeseriesResponse,

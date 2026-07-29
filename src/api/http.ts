@@ -5,7 +5,11 @@ export const DEFAULT_API_URL = 'https://api.gauntlet.xyz';
 export interface GauntletApiConfig {
   /** Kong consumer key sent as `x-api-key`. Anonymous access is rate-limited. */
   apiKey?: string;
-  /** Override the API origin, e.g. for a Next.js proxy route. Defaults to `https://api.gauntlet.xyz`. */
+  /**
+   * Override the API origin. Defaults to `https://api.gauntlet.xyz`. In a
+   * browser this may be a relative path (e.g. a Next.js rewrite like
+   * `/gauntlet-api`), which resolves against the page origin.
+   */
   apiUrl?: string;
   /** Custom fetch implementation (testing, instrumentation). Defaults to global fetch. */
   fetch?: typeof fetch;
@@ -21,7 +25,14 @@ export async function apiGet<T>(
   // Concatenate instead of `new URL(path, base)`: the paths are absolute, so
   // URL resolution would silently drop any path prefix on a proxy apiUrl.
   const base = (config.apiUrl ?? DEFAULT_API_URL).replace(/\/+$/, '');
-  const url = new URL(base + path);
+  // Relative bases resolve against the browser origin.
+  const origin = (globalThis as { location?: { origin: string } }).location?.origin;
+  if (origin === undefined && !/^[a-z][a-z0-9+.-]*:\/\//i.test(base)) {
+    throw new Error(
+      `relative apiUrl "${base}" requires a browser origin; pass an absolute apiUrl outside the browser`
+    );
+  }
+  const url = new URL(base + path, origin);
   for (const [key, value] of Object.entries(query ?? {})) {
     if (value !== undefined) url.searchParams.set(key, String(value));
   }
