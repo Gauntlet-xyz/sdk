@@ -42,6 +42,20 @@ export interface TimeWindowOptions extends PageOptions {
 export interface ActivityOptions extends PageOptions {
   /** CAIP-10 vault id (`"{chainId}:{address}"`). Omit for wallet-wide activity. */
   vaultId?: string;
+  /**
+   * Wallet-wide feeds only: include activity in hidden (enabled but unlisted)
+   * vaults alongside visible ones. Activity in disabled vaults is never
+   * returned. Ignored when `vaultId` is set.
+   */
+  includeHidden?: boolean;
+}
+
+export interface PositionsOptions extends PageOptions {
+  /**
+   * Include positions in hidden (enabled but unlisted) vaults alongside
+   * visible ones. Positions in disabled vaults are never returned.
+   */
+  includeHidden?: boolean;
 }
 
 export interface LatestPriceOptions {
@@ -122,10 +136,14 @@ export class GauntletApi {
   }
 
   /** GET /v1/users/{wallet}/positions — all of a wallet's indexed positions with PnL. */
-  positions(walletAddress: string, options: PageOptions = {}): Promise<UserAllPositionsResponse> {
+  positions(
+    walletAddress: string,
+    options: PositionsOptions = {}
+  ): Promise<UserAllPositionsResponse> {
     return this.get(`/v1/users/${encodeURIComponent(walletAddress)}/positions`, {
       next: options.next,
       limit: options.limit,
+      include_hidden: options.includeHidden,
     });
   }
 
@@ -150,9 +168,10 @@ export class GauntletApi {
 
   /** GET /v1/users/{wallet}/activity — one page of the wallet's immutable event log. */
   activity(walletAddress: string, options: ActivityOptions = {}): Promise<UserActivityResponse> {
-    const { vaultId, ...page } = options;
+    const { vaultId, includeHidden, ...page } = options;
     return this.get(`/v1/users/${encodeURIComponent(walletAddress)}/activity`, {
       vault_id: vaultId,
+      include_hidden: includeHidden,
       ...page,
     });
   }

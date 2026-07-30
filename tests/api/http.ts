@@ -69,4 +69,37 @@ describe('positions paging options', () => {
 
     expect(urls).toEqual(['https://api.gauntlet.xyz/v1/users/0xUser/positions']);
   });
+
+  it('forwards includeHidden as include_hidden', async () => {
+    const { fetch, urls } = captureFetch();
+    const api = new GauntletApi({ fetch });
+
+    await api.positions('0xUser', { includeHidden: true });
+
+    expect(urls).toEqual([
+      'https://api.gauntlet.xyz/v1/users/0xUser/positions?include_hidden=true',
+    ]);
+  });
+});
+
+describe('activity options', () => {
+  it('forwards vaultId and includeHidden as query params', async () => {
+    const { fetch, urls } = captureFetch();
+    const api = new GauntletApi({ fetch });
+
+    await api.activity('0xUser', { vaultId: '8453:0xVault', includeHidden: true, limit: 50 });
+
+    expect(urls).toEqual([
+      'https://api.gauntlet.xyz/v1/users/0xUser/activity?vault_id=8453%3A0xVault&include_hidden=true&limit=50',
+    ]);
+  });
+
+  it('omits activity params when no options are given', async () => {
+    const { fetch, urls } = captureFetch();
+    const api = new GauntletApi({ fetch });
+
+    await api.activity('0xUser');
+
+    expect(urls).toEqual(['https://api.gauntlet.xyz/v1/users/0xUser/activity']);
+  });
 });
