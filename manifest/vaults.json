@@ -1,5 +1,5 @@
 {
-  "version": "2026-07-29",
+  "version": "2026-05-15",
   "vaults": [
     {
       "vaultId": "baseUsdcPrime",
@@ -1535,90 +1535,6 @@
       ]
     },
     {
-      "vaultId": "junoMxnbPrime",
-      "name": "Juno MXNB Prime",
-      "protocol": "morpho",
-      "strategy": "Prime Lending v2",
-      "deployments": [
-        {
-          "chain": "evm",
-          "chainId": 8453,
-          "vaultAddress": "0x08cc279532f159BdB450eBc0bAf6562f585Ded58",
-          "vaultType": "single-depositor",
-          "supplyToken": [
-            {
-              "address": "0xF197FFC28c23E0309B5559e7a166f2c6164C80aA",
-              "symbol": "MXNB",
-              "decimals": 6
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "vaultId": "tempoPathusdPrime",
-      "name": "Gauntlet pathUSD Prime",
-      "protocol": "morpho",
-      "strategy": "Prime Lending v2",
-      "deployments": [
-        {
-          "chain": "evm",
-          "chainId": 4217,
-          "vaultAddress": "0xC609656Ed9ef219c98C8e549bF729144F211f06E",
-          "vaultType": "single-depositor",
-          "supplyToken": [
-            {
-              "address": "0x20C0000000000000000000000000000000000000",
-              "symbol": "pathUSD",
-              "decimals": 6
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "vaultId": "tempoPathusdFrontier",
-      "name": "Gauntlet pathUSD Frontier",
-      "protocol": "morpho",
-      "strategy": "Frontier Lending v2",
-      "deployments": [
-        {
-          "chain": "evm",
-          "chainId": 4217,
-          "vaultAddress": "0xe5235da8Ad839dd2A9De1f1069c89cA3575b5208",
-          "vaultType": "single-depositor",
-          "supplyToken": [
-            {
-              "address": "0x20C0000000000000000000000000000000000000",
-              "symbol": "pathUSD",
-              "decimals": 6
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "vaultId": "stableUsdtEarn",
-      "name": "Gauntlet USDT StableEarn",
-      "protocol": "morpho",
-      "strategy": "Frontier Lending v2",
-      "deployments": [
-        {
-          "chain": "evm",
-          "chainId": 988,
-          "vaultAddress": "0xb7Df8db22A5DBBFA9ebeb94b3910aec6a4f05c08",
-          "vaultType": "single-depositor",
-          "supplyToken": [
-            {
-              "address": "0x779Ded0c9e1022225f8E0630b35a9b54bE713736",
-              "symbol": "USDT0",
-              "decimals": 6
-            }
-          ]
-        }
-      ]
-    },
-    {
       "vaultId": "gtusda",
       "name": "Gauntlet USD Alpha",
       "protocol": "aera",
@@ -2118,73 +2034,10 @@
       ]
     },
     {
-      "vaultId": "lidov3stg",
-      "name": "evstETH Stg",
-      "protocol": "aera",
-      "strategy": "Lido V3 wstETH Leverage",
-      "deployments": [
-        {
-          "chain": "evm",
-          "chainId": 1,
-          "vaultAddress": "0x0313C149AB341e8A3695edC472c8723F27379315",
-          "vaultType": "multi-depositor",
-          "supplyToken": [
-            {
-              "address": "0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0",
-              "symbol": "wstETH",
-              "decimals": 18
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "vaultId": "pestovault",
-      "name": "PestoVault",
-      "protocol": "aera",
-      "strategy": "Multi-strategy Stablecoin Yield",
-      "deployments": [
-        {
-          "chain": "evm",
-          "chainId": 1,
-          "vaultAddress": "0x4D6F5E146f248392228b711162dc585F95daC067",
-          "vaultType": "multi-depositor",
-          "supplyToken": [
-            {
-              "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-              "symbol": "USDC",
-              "decimals": 6
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "vaultId": "devburrito",
-      "name": "BurritoVault",
-      "protocol": "aera",
-      "strategy": "Multi-strategy Stablecoin Yield",
-      "deployments": [
-        {
-          "chain": "evm",
-          "chainId": 8453,
-          "vaultAddress": "0xE5E6f0e217b1eA3ADE09324b69F5765662b9e061",
-          "vaultType": "multi-depositor",
-          "supplyToken": [
-            {
-              "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-              "symbol": "USDC",
-              "decimals": 6
-            }
-          ]
-        }
-      ]
-    },
-    {
       "vaultId": "gtlpsnib",
-      "name": "Gauntlet x SecondFi LP Vault",
+      "name": "gtLPSNIB",
       "protocol": "aera",
-      "strategy": "USDC LP Yield",
+      "strategy": "Gauntlet x SecondFi LP Vault",
       "deployments": [
         {
           "chain": "evm",
@@ -2203,9 +2056,9 @@
     },
     {
       "vaultId": "gtlpluia",
-      "name": "Gauntlet x Liquid LP Vault",
+      "name": "gtLPLUIA",
       "protocol": "aera",
-      "strategy": "USDC LP Yield",
+      "strategy": "Gauntlet x Liquid LP Vault",
       "deployments": [
         {
           "chain": "evm",
@@ -2222,7 +2075,7 @@
         }
       ]
     },
-    {
+        {
       "vaultId": "exausd",
       "name": "exaUSD",
       "protocol": "aera",
@@ -2359,6 +2212,48 @@
           "chainId": 1,
           "vaultAddress": "0xeAf1f4C98635b56021a3EAabC08Fca3b24214084",
           "vaultType": "single-depositor",
+          "supplyToken": [
+            {
+              "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+              "symbol": "USDC",
+              "decimals": 6
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "vaultId": "stgusdhy",
+      "name": "stgUSDhy",
+      "protocol": "aera",
+      "strategy": "Gauntlet High Yield Staging",
+      "deployments": [
+        {
+          "chain": "evm",
+          "chainId": 1,
+          "vaultAddress": "0x12081d6D2fC9AFe58390FF7B8909c8A31d4F4Ff2",
+          "vaultType": "multi-depositor",
+          "supplyToken": [
+            {
+              "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+              "symbol": "USDC",
+              "decimals": 6
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "vaultId": "gtusdhy",
+      "name": "gtUSDhy",
+      "protocol": "aera",
+      "strategy": "Gauntlet High Yield Prod",
+      "deployments": [
+        {
+          "chain": "evm",
+          "chainId": 1,
+          "vaultAddress": "0x15218Fbb0Efc0A3D5D731a242d853fa625532C3D",
+          "vaultType": "multi-depositor",
           "supplyToken": [
             {
               "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
