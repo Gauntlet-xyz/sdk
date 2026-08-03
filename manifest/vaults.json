@@ -1,5 +1,5 @@
 {
-  "version": "2026-05-15",
+  "version": "2026-08-03",
   "vaults": [
     {
       "vaultId": "baseUsdcPrime",
@@ -1746,7 +1746,7 @@
           "chainId": 1,
           "vaultAddress": "0x00000000d8f3d6c5DFeB2D2b5ED2276095f3aF44",
           "vaultType": "multi-depositor",
-          "expirationDays": 64,
+          "expirationDays": 90,
           "supplyToken": [
             {
               "address": "0xc26a6fa2c37b38e549a4a1807543801db684f99c",
@@ -1773,7 +1773,7 @@
           "chainId": 1,
           "vaultAddress": "0x953Ca96b057D5397CE7791C5AE9b5a19b1352341",
           "vaultType": "multi-depositor",
-          "expirationDays": 64,
+          "expirationDays": 90,
           "supplyToken": [
             {
               "address": "0x99e05cdbeac5d91150935c59ff8e9ba9945d6884",
@@ -2075,7 +2075,7 @@
         }
       ]
     },
-        {
+    {
       "vaultId": "exausd",
       "name": "exaUSD",
       "protocol": "aera",
