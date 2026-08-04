@@ -223,7 +223,7 @@ export interface paths {
         };
         /**
          * List Gauntlet-curated vaults
-         * @description Returns identification-only rows for the admin-curated visible vaults, ordered most-recent-first; pass `?include_hidden=true` for every enabled vault (hidden included, disabled never). Use `/{vault_id}` for current metrics, `/{vault_id}/definition` for the full vault definition, `/{vault_id}/timeseries` for history.
+         * @description Returns identification-only rows for the admin-curated visible vaults, ordered most-recent-first; pass `?include_hidden=true` for every enabled vault (hidden included, disabled never). Each row's `group.id` groups deployments of the same logical Admin vault, `group.slug` is its unique public route, and `group.is_primary` identifies its representative. Use `/{vault_id}` for current metrics, `/{vault_id}/definition` for the full vault definition, `/{vault_id}/timeseries` for history.
          *
          *     Cursor-paginated, but the default page size is the cap so most callers don't need to think about it — pass `meta.next_cursor` back as `?next=` only if the result exceeds 1000 vaults.
          */
@@ -245,7 +245,7 @@ export interface paths {
         };
         /**
          * Get current vault metrics
-         * @description Returns the current metrics snapshot for a vault — same metric shape that `/timeseries` emits per point, so this is `current point` and timeseries is `historical points`. The vault's protocol-specific definition (fees, hooks, curator, etc.) lives on `/{vault_id}/definition`.
+         * @description Returns the current metrics snapshot for a vault — same metric shape that `/timeseries` emits per point, so this is `current point` and timeseries is `historical points`. The vault's Admin grouping is included when the deployment is associated. The protocol-specific definition (fees, hooks, curator, etc.) lives on `/{vault_id}/definition`.
          */
         get: operations["get_vault"];
         put?: never;
@@ -451,8 +451,8 @@ export interface components {
             timestamp: string;
         };
         /**
-         * @description Envelope for unpaginated list endpoints: `count` but no paging
-         *     fields.
+         * @description Documented metadata for list endpoints; pagination fields are omitted
+         *     by unpaginated responses.
          */
         ListMeta: {
             /**
@@ -460,6 +460,13 @@ export interface components {
              * @description Number of items in this response.
              */
             count: number;
+            /**
+             * Format: int64
+             * @description Page-size cap actually applied to paginated lists.
+             */
+            limit?: number | null;
+            /** @description Set when more pages exist; pass back as `?next=`. */
+            next_cursor?: string | null;
             /** @description Item-scoped failures isolated from an aggregate response. */
             partial_errors?: components["schemas"]["PartialResponseError"][] | null;
             /** Format: date-time */
@@ -789,6 +796,7 @@ export interface components {
             address: string;
             /** Format: int64 */
             chain_id: number;
+            group?: null | components["schemas"]["VaultGroupRef"];
             metrics: components["schemas"]["VaultMetrics"];
             name: string;
             numeraire_token: components["schemas"]["TokenRef"];
@@ -799,6 +807,19 @@ export interface components {
         VaultDetailResponse: {
             data: components["schemas"]["VaultDetail"];
             meta: components["schemas"]["BasicMeta"];
+        };
+        /** @description Admin-curated logical grouping for a deployment-level vault row. */
+        VaultGroupRef: {
+            /** @description Stable internal group id from the Admin vault registry (`vlt_176`). */
+            id: string;
+            /** @description Whether this deployment is the group's primary representative. */
+            is_primary: boolean;
+            /** @description Unique, curator-managed public route (`stgusda`). */
+            slug: string;
+        };
+        VaultListResponse: {
+            data: components["schemas"]["VaultDetail"][];
+            meta: components["schemas"]["ListMeta"];
         };
         VaultMetrics: {
             /** Format: double */
@@ -1255,7 +1276,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["VaultListResponse"];
+                };
             };
             /** @description Missing or invalid auth */
             401: {
