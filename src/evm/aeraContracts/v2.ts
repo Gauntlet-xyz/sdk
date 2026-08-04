@@ -13,8 +13,9 @@ import {
   convertUnitsToTokenIfActive,
 } from './priceAndFeeCalculator';
 import { MAX_BPS } from '../../constants';
-import { StalePriceError } from '../../errors';
+import { StalePriceError, UnsupportedFeatureError } from '../../errors';
 import type { ContractVersion } from '../types';
+import { readAtBlock } from './readOptions';
 
 export type PriceAndFeeCalculatorContract<T extends Client> = GetContractReturnType<
   typeof priceAndFeeCalculatorV2Abi,
@@ -33,16 +34,44 @@ export function getPriceAndFeeCalculator<T extends Client>(
   });
 }
 
-function getProvisioner<T extends Client>(client: T, address: Address) {
-  return getContract({
-    address,
-    abi: provisionerV2Abi,
-    client,
-  });
+type SyncRedeemReadOptions = {
+  blockNumber?: bigint;
+  blockTimestamp?: bigint;
+};
+
+async function resolveReadContext(
+  client: PublicClient,
+  options: SyncRedeemReadOptions = {}
+): Promise<Required<SyncRedeemReadOptions>> {
+  if (options.blockNumber !== undefined && options.blockTimestamp !== undefined) {
+    return { blockNumber: options.blockNumber, blockTimestamp: options.blockTimestamp };
+  }
+
+  const block =
+    options.blockNumber === undefined ? await client.getBlock() : await client.getBlock(options);
+  if (block.number === null) {
+    throw new UnsupportedFeatureError('Aera: sync redeem reads require a numbered block');
+  }
+
+  return {
+    blockNumber: options.blockNumber ?? block.number,
+    blockTimestamp: options.blockTimestamp ?? BigInt(block.timestamp),
+  };
 }
 
-async function getTokenDetails(client: PublicClient, provisioner: Address, token: Address) {
-  return getProvisioner(client, provisioner).read.tokensDetails([token]);
+async function getTokenDetails(
+  client: PublicClient,
+  provisioner: Address,
+  token: Address,
+  options: SyncRedeemReadOptions = {}
+) {
+  return client.readContract({
+    address: provisioner,
+    abi: provisionerV2Abi,
+    functionName: 'tokensDetails',
+    args: [token],
+    ...readAtBlock(options),
+  });
 }
 
 async function getDepositUnitsOut({
@@ -54,6 +83,7 @@ async function getDepositUnitsOut({
   token,
   tokensIn,
   multiplierIndex,
+  options,
 }: {
   client: PublicClient;
   provisioner: Address;
@@ -63,8 +93,9 @@ async function getDepositUnitsOut({
   token: Address;
   tokensIn: bigint;
   multiplierIndex: 4 | 6;
+  options?: SyncRedeemReadOptions;
 }): Promise<bigint> {
-  const tokenDetails = await getTokenDetails(client, provisioner, token);
+  const tokenDetails = await getTokenDetails(client, provisioner, token, options);
   const multiplier = BigInt(tokenDetails[multiplierIndex]);
   const adjustedTokensIn = (tokensIn * multiplier) / MAX_BPS;
 
@@ -75,7 +106,8 @@ async function getDepositUnitsOut({
     vault,
     token,
     adjustedTokensIn,
-    Rounding.Floor
+    Rounding.Floor,
+    options
   );
 }
 
@@ -88,6 +120,7 @@ async function getRedeemTokenOut({
   token,
   unitsIn,
   multiplierIndex,
+  options,
 }: {
   client: PublicClient;
   provisioner: Address;
@@ -97,9 +130,10 @@ async function getRedeemTokenOut({
   token: Address;
   unitsIn: bigint;
   multiplierIndex: 5 | 7;
+  options?: SyncRedeemReadOptions;
 }): Promise<bigint> {
   const [tokenDetails, tokensOut] = await Promise.all([
-    getTokenDetails(client, provisioner, token),
+    getTokenDetails(client, provisioner, token, options),
     convertUnitsToTokenIfActive(
       client,
       feeCalculator,
@@ -107,7 +141,8 @@ async function getRedeemTokenOut({
       vault,
       token,
       unitsIn,
-      Rounding.Floor
+      Rounding.Floor,
+      options
     ),
   ]);
   const multiplier = BigInt(tokenDetails[multiplierIndex]);
@@ -124,6 +159,7 @@ async function getWithdrawUnitsIn({
   token,
   tokensOut,
   multiplierIndex,
+  options,
 }: {
   client: PublicClient;
   provisioner: Address;
@@ -133,8 +169,9 @@ async function getWithdrawUnitsIn({
   token: Address;
   tokensOut: bigint;
   multiplierIndex: 5 | 7;
+  options?: SyncRedeemReadOptions;
 }): Promise<bigint> {
-  const tokenDetails = await getTokenDetails(client, provisioner, token);
+  const tokenDetails = await getTokenDetails(client, provisioner, token, options);
   const multiplier = BigInt(tokenDetails[multiplierIndex]);
   const preMultiplierTokens = (tokensOut * MAX_BPS + multiplier - 1n) / multiplier;
 
@@ -145,17 +182,37 @@ async function getWithdrawUnitsIn({
     vault,
     token,
     preMultiplierTokens,
-    Rounding.Ceil
+    Rounding.Ceil,
+    options
   );
 }
 
-async function getSyncRedeemMultiplier(
+/** Breakdown of the effective sync redeem multiplier, in basis points. */
+export interface SyncRedeemRate {
+  /** Base sync redeem multiplier (tokensDetails.syncRedeemMultiplier). */
+  baseMultiplierBps: bigint;
+  /** Dynamic premium charged for the current oracle price age. */
+  dynamicPremiumBps: bigint;
+  /** Multiplier actually applied to size the redemption (base - dynamic premium). */
+  effectiveMultiplierBps: bigint;
+}
+
+/**
+ * Reads the live sync redeem rate, replicating the provisioner's effective-multiplier
+ * derivation (base multiplier minus a price-age-proportional dynamic premium).
+ *
+ * @throws {StalePriceError} If the oracle price is older than the configured max age,
+ *   in which case the on-chain sync redeem would revert.
+ */
+export async function getSyncRedeemRate(
   client: PublicClient,
   provisioner: Address,
   vault: Address,
   token: Address,
-  feeCalculator: Address
-): Promise<bigint> {
+  feeCalculator: Address,
+  options: SyncRedeemReadOptions = {}
+): Promise<SyncRedeemRate> {
+  const readContext = await resolveReadContext(client, options);
   const [tokenDetails, syncRedeemDetails, anchorTimestamp] = await client.multicall({
     contracts: [
       {
@@ -177,12 +234,12 @@ async function getSyncRedeemMultiplier(
       },
     ],
     allowFailure: false,
+    blockNumber: readContext.blockNumber,
   });
-  const block = await client.getBlock();
-  const syncRedeemMultiplier = BigInt(tokenDetails[7]);
+  const baseMultiplierBps = BigInt(tokenDetails[7]);
   const maxPriceAge = BigInt(syncRedeemDetails[0]);
   const maxDynamicPremiumBps = BigInt(syncRedeemDetails[2]);
-  const blockTimestamp = BigInt(block.timestamp);
+  const blockTimestamp = readContext.blockTimestamp;
   const priceTimestamp = BigInt(anchorTimestamp);
 
   if (priceTimestamp + maxPriceAge < blockTimestamp) {
@@ -198,7 +255,23 @@ async function getSyncRedeemMultiplier(
       ? 0n
       : ((blockTimestamp - priceTimestamp) * maxDynamicPremiumBps + maxPriceAge - 1n) / maxPriceAge;
 
-  return syncRedeemMultiplier - dynamicPremiumBps;
+  return {
+    baseMultiplierBps,
+    dynamicPremiumBps,
+    effectiveMultiplierBps: baseMultiplierBps - dynamicPremiumBps,
+  };
+}
+
+async function getSyncRedeemMultiplier(
+  client: PublicClient,
+  provisioner: Address,
+  vault: Address,
+  token: Address,
+  feeCalculator: Address,
+  options: SyncRedeemReadOptions = {}
+): Promise<bigint> {
+  return (await getSyncRedeemRate(client, provisioner, vault, token, feeCalculator, options))
+    .effectiveMultiplierBps;
 }
 
 export async function getSyncRedeemTokenOut(
@@ -208,8 +281,12 @@ export async function getSyncRedeemTokenOut(
   feeCalculatorVersion: ContractVersion,
   vault: Address,
   token: Address,
-  unitsIn: bigint
+  unitsIn: bigint,
+  effectiveMultiplierBps?: bigint,
+  options: SyncRedeemReadOptions = {}
 ): Promise<bigint> {
+  const readContext =
+    effectiveMultiplierBps === undefined ? await resolveReadContext(client, options) : options;
   const [tokenAmount, multiplier] = await Promise.all([
     convertUnitsToTokenIfActive(
       client,
@@ -218,9 +295,12 @@ export async function getSyncRedeemTokenOut(
       vault,
       token,
       unitsIn,
-      Rounding.Floor
+      Rounding.Floor,
+      readContext
     ),
-    getSyncRedeemMultiplier(client, provisioner, vault, token, feeCalculator),
+    effectiveMultiplierBps !== undefined
+      ? Promise.resolve(effectiveMultiplierBps)
+      : getSyncRedeemMultiplier(client, provisioner, vault, token, feeCalculator, readContext),
   ]);
 
   return (tokenAmount * multiplier) / MAX_BPS;
@@ -317,15 +397,15 @@ export async function getSyncWithdrawUnitsIn(
   feeCalculatorVersion: ContractVersion,
   vault: Address,
   token: Address,
-  tokensOut: bigint
+  tokensOut: bigint,
+  effectiveMultiplierBps?: bigint,
+  options: SyncRedeemReadOptions = {}
 ): Promise<bigint> {
-  const multiplier = await getSyncRedeemMultiplier(
-    client,
-    provisioner,
-    vault,
-    token,
-    feeCalculator
-  );
+  const readContext =
+    effectiveMultiplierBps === undefined ? await resolveReadContext(client, options) : options;
+  const multiplier =
+    effectiveMultiplierBps ??
+    (await getSyncRedeemMultiplier(client, provisioner, vault, token, feeCalculator, readContext));
   const prePremiumTokens = (tokensOut * MAX_BPS + multiplier - 1n) / multiplier;
 
   return convertTokenToUnitsIfActive(
@@ -335,8 +415,52 @@ export async function getSyncWithdrawUnitsIn(
     vault,
     token,
     prePremiumTokens,
-    Rounding.Ceil
+    Rounding.Ceil,
+    readContext
   );
+}
+
+/** Current sync redeem epoch accounting, in numeraire (all values uint256). */
+export interface SyncRedeemEpochState {
+  epochTimestamp: bigint;
+  epochStartTvlNumeraire: bigint;
+  epochRedeemedNumeraire: bigint;
+  epochCapNumeraire: bigint;
+}
+
+export async function getSyncRedeemEpochState(
+  client: PublicClient,
+  provisioner: Address,
+  options: SyncRedeemReadOptions = {}
+): Promise<SyncRedeemEpochState> {
+  const [epochTimestamp, epochStartTvlNumeraire, epochRedeemedNumeraire, epochCapNumeraire] =
+    await client.readContract({
+      address: provisioner,
+      abi: provisionerV2Abi,
+      functionName: 'getSyncRedeemEpochState',
+      ...readAtBlock(options),
+    });
+
+  return { epochTimestamp, epochStartTvlNumeraire, epochRedeemedNumeraire, epochCapNumeraire };
+}
+
+/**
+ * Raw expiry timestamp for the user's latest sync-deposit lock (0 if none was recorded).
+ * The user is locked while this value is greater than or equal to the relevant block timestamp.
+ */
+export async function getUserUnitsRefundableUntil(
+  client: PublicClient,
+  provisioner: Address,
+  user: Address,
+  options: SyncRedeemReadOptions = {}
+): Promise<bigint> {
+  return client.readContract({
+    address: provisioner,
+    abi: provisionerV2Abi,
+    functionName: 'userUnitsRefundableUntil',
+    args: [user],
+    ...readAtBlock(options),
+  });
 }
 
 export function depositTxRequest(

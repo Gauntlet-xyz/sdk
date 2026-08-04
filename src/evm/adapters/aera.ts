@@ -3,6 +3,7 @@ import {
   getMultiDepositorVault,
   applySlippageDown,
   applySlippageUp,
+  requireAeraSyncRedeemRuntime,
   resolveContractVersion,
   type AeraRuntimeContracts,
 } from '../aeraContracts';
@@ -12,6 +13,7 @@ import * as provisionerV2 from '../aeraContracts/v2';
 import {
   InvalidWithdrawParamsError,
   InvalidSolverTipError,
+  requireNonZeroSyncWithdrawBound,
   UnimplementedFeatureError,
   UnsupportedFeatureError,
 } from '../../errors';
@@ -321,9 +323,7 @@ export const aeraAdapter: EvmProtocolAdapter = {
       throw new UnsupportedFeatureError('Aera: separate receiver address on V1');
     }
 
-    if (!isAsync && !isContractV2) {
-      throw new UnsupportedFeatureError('Aera: sync operations on V1');
-    }
+    if (!isAsync) requireAeraSyncRedeemRuntime(runtime);
 
     const isV2ExactTokenWithdraw =
       isContractV2 && !isAsync && 'amount' in params && params.amount != null;
@@ -332,40 +332,66 @@ export const aeraAdapter: EvmProtocolAdapter = {
     let shares: bigint | undefined;
 
     if (isContractV2 && !isAsync) {
+      const quote = params.syncWithdrawQuote;
       if ('entireAmount' in params && params.entireAmount) {
-        shares = await publicClient.readContract({
+        const balance = await publicClient.readContract({
           address: vault.vaultAddress,
           abi: multiDepositorVaultAbi,
           functionName: 'balanceOf',
           args: [account],
         });
+        if (quote !== undefined) {
+          if (quote.kind !== 'redeem' || quote.shares !== balance) {
+            throw new InvalidWithdrawParamsError();
+          }
+        }
+        shares = balance;
       } else if ('shares' in params && params.shares != null) {
+        if (quote !== undefined && (quote.kind !== 'redeem' || quote.shares !== params.shares)) {
+          throw new InvalidWithdrawParamsError();
+        }
         shares = params.shares;
       } else if (!('amount' in params && params.amount != null)) {
         throw new InvalidWithdrawParamsError();
       }
 
       if (isV2ExactTokenWithdraw) {
-        minTokenOut = applySlippageDown(params.amount, slippageBps);
-        maxUnitsIn = applySlippageUp(
-          await provisionerV2.getSyncWithdrawUnitsIn(
-            publicClient,
-            provisionerAddress,
-            runtime.feeCalculator.address,
-            runtime.feeCalculator.version,
-            vault.vaultAddress,
-            asset.address,
-            params.amount
-          ),
-          slippageBps
-        );
+        requireNonZeroSyncWithdrawBound(params.amount, 'tokensOut');
+        if (quote !== undefined) {
+          if (quote.kind !== 'withdraw' || quote.tokensOut !== params.amount) {
+            throw new InvalidWithdrawParamsError();
+          }
+          minTokenOut = quote.tokensOut;
+          maxUnitsIn = quote.maxUnitsIn;
+        } else {
+          minTokenOut = params.amount;
+          maxUnitsIn = applySlippageUp(
+            await provisionerV2.getSyncWithdrawUnitsIn(
+              publicClient,
+              provisionerAddress,
+              runtime.feeCalculator.address,
+              runtime.feeCalculator.version,
+              vault.vaultAddress,
+              asset.address,
+              params.amount
+            ),
+            slippageBps
+          );
+        }
+        requireNonZeroSyncWithdrawBound(maxUnitsIn, 'maxUnitsIn');
       } else {
         if (shares === undefined) {
           throw new InvalidWithdrawParamsError();
         }
 
-        minTokenOut = applySlippageDown(
-          await provisionerV2.getSyncRedeemTokenOut(
+        requireNonZeroSyncWithdrawBound(shares, 'unitsIn');
+        if (quote !== undefined) {
+          if (quote.kind !== 'redeem' || quote.shares !== shares) {
+            throw new InvalidWithdrawParamsError();
+          }
+          minTokenOut = quote.minTokensOut;
+        } else {
+          const tokensOut = await provisionerV2.getSyncRedeemTokenOut(
             publicClient,
             provisionerAddress,
             runtime.feeCalculator.address,
@@ -373,10 +399,11 @@ export const aeraAdapter: EvmProtocolAdapter = {
             vault.vaultAddress,
             asset.address,
             shares
-          ),
-          slippageBps
-        );
-        maxUnitsIn = applySlippageUp(shares, slippageBps);
+          );
+          minTokenOut = applySlippageDown(tokensOut, slippageBps);
+        }
+        requireNonZeroSyncWithdrawBound(minTokenOut, 'minTokensOut');
+        maxUnitsIn = shares;
       }
     } else {
       if ('entireAmount' in params && params.entireAmount) {

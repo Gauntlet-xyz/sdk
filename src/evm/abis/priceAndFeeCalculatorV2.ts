@@ -49,6 +49,28 @@ export const priceAndFeeCalculatorV2Abi = [
   },
   {
     type: 'function',
+    inputs: [
+      { name: 'vault', internalType: 'address', type: 'address' },
+      { name: 'token', internalType: 'contract IERC20', type: 'address' },
+      { name: 'tokenAmount', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'convertTokenToNumeraire',
+    outputs: [{ name: 'numeraireAmount', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'vault', internalType: 'address', type: 'address' },
+      { name: 'token', internalType: 'contract IERC20', type: 'address' },
+      { name: 'numeraireAmount', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'convertNumeraireToToken',
+    outputs: [{ name: 'tokenAmount', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
     inputs: [{ name: 'vault', internalType: 'address', type: 'address' }],
     name: 'getAnchorTimestamp',
     outputs: [{ name: 'timestamp', internalType: 'uint32', type: 'uint32' }],

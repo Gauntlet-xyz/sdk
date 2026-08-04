@@ -54,6 +54,54 @@ const client = await createGauntletClientFromPrivy({
 });
 ```
 
+## Aera instant withdrawals
+
+Use the live capability result to decide whether to offer an instant withdrawal, then pass the
+quote back to `getWithdrawTx` so the submitted transaction uses the quoted bounds.
+
+```ts
+import {
+  getAeraTokenModeSupport,
+  getSyncWithdrawQuote,
+  getWithdrawTx,
+  VaultId,
+} from '@gauntlet-xyz/sdk'
+
+const vaultId = VaultId.AeraUsdAlpha
+const support = await getAeraTokenModeSupport(client, { vaultId })
+
+if (support.syncRedeem) {
+  const quote = await getSyncWithdrawQuote(client, {
+    vaultId,
+    amount: 1_000_000n,
+    slippageBps: 100,
+  })
+  const steps = await getWithdrawTx(client, {
+    vaultId,
+    amount: 1_000_000n,
+    syncWithdrawQuote: quote,
+  })
+}
+```
+
+An `amount` quote uses exact token output and returns a `maxUnitsIn` bound. A `shares` quote uses
+exact shares and returns a `minTokensOut` bound. Full-position quotes require
+`{ entireAmount: true, account }`; the matching transaction uses the configured wallet account,
+and an optional `account` must match that wallet. The returned `SyncWithdrawQuote` is directly
+assignable to the exported `SyncWithdrawQuoteBounds` accepted by `getWithdrawTx`.
+
+Supplying `syncWithdrawQuote` implies sync mode and validates its vault, chain, token, account,
+slippage, and sizing request. When transaction slippage is omitted, the builder uses the quote's
+slippage; an explicitly supplied value must match. A `shares` or `entireAmount` quote with
+`slippageBps: 10000` is rejected because it would produce `minTokensOut: 0`.
+
+Live capability checks also apply the V2 solving gate. While the gate pauses the provisioner/token
+pair, both sync flags are false and sync quote or transaction requests are rejected.
+
+Common failures are `UnsupportedDepositModeError`,
+`UnsupportedFeatureError`, `StalePriceError`, `InvalidSyncWithdrawBoundError`,
+`InvalidWithdrawParamsError`, `AccountRequiredError`, and `AccountMismatchError`.
+
 ## REST API (`client.api`)
 
 `client.api` is a typed client for the Gauntlet API at `api.gauntlet.xyz` — indexed vault metrics, user positions with PnL, the wallet activity log, TVL, and token prices. Response types are generated from the service's OpenAPI spec and verified in CI, so they cannot drift.

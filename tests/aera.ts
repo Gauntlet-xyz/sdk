@@ -16,17 +16,35 @@ import {
   ContractFunctionZeroDataError,
   decodeErrorResult,
   toFunctionSelector,
+  zeroAddress,
   type Address,
   type PublicClient,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { GauntletClient } from '../src/client';
+import { getAeraTokenModeSupport } from '../src';
 import { getDepositTx } from '../src/evm/deposit';
 import { getDepositReceiverApprovalTx } from '../src/evm/depositReceiverApproval';
 import { getWithdrawTx } from '../src/evm/withdraw';
+import type { EvmWithdrawParams } from '../src/evm/withdraw';
+import { getSyncWithdrawQuote } from '../src/evm/withdrawQuote';
+import type {
+  SyncWithdrawQuoteBounds,
+  SyncWithdrawQuoteContext,
+  SyncWithdrawQuoteParams,
+} from '../src/evm/withdrawQuote';
 import { VaultId } from '../src/evm/vaults';
 import { erc20Abi } from '../src/evm/abis/erc20';
-import { StalePriceError, UnsupportedDepositModeError, UnsupportedFeatureError } from '../src/errors';
+import {
+  AccountMismatchError,
+  AccountRequiredError,
+  InvalidSlippageBPSError,
+  InvalidSyncWithdrawBoundError,
+  InvalidWithdrawParamsError,
+  StalePriceError,
+  UnsupportedDepositModeError,
+  UnsupportedFeatureError,
+} from '../src/errors';
 import { resolveAeraRuntimeContracts, resolveContractVersion } from '../src/evm/aeraContracts';
 import { ContractVersion, type EvmVaultDeployment } from '../src/evm/types';
 import { getMultiDepositorVault } from '@gauntletnetworks/aera-v3-ts-sdk/multiDepositorVault';
@@ -49,6 +67,7 @@ const ALICE_PRIVATE_KEY = '0x59c6995e998f97a5a0044976f1fbb7f9e2cc59e6da44b6e5d01
 const USDC_ADDRESS: Address = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
 const AERA_VAULT_ADDRESS: Address = '0x000000000001CdB57E58Fa75Fe420a0f4D6640D5';
 const PROVISIONER_ADDRESS: Address = '0x18CF8d963E1a727F9bbF3AEffa0Bd04FB4dBdA07';
+const SOLVING_GATE_ADDRESS: Address = '0x0000000000000000000000000000000000000050';
 const VAULT_ID = VaultId.AeraUsdAlpha;
 const DEPOSIT_AMOUNT = parseUnits('100', 6); // 100 USDC
 const RECEIVER: Address = '0x00000000000000000000000000000000deadbeef';
@@ -79,7 +98,9 @@ const contractVersionAbi = [
   },
 ] as const;
 
-function versionExecutionError(cause: ConstructorParameters<typeof ContractFunctionExecutionError>[0]) {
+function versionExecutionError(
+  cause: ConstructorParameters<typeof ContractFunctionExecutionError>[0]
+) {
   return new ContractFunctionExecutionError(cause, {
     abi: contractVersionAbi,
     functionName: 'version',
@@ -125,6 +146,13 @@ function publicClientWithContractVersion({
   } as unknown as PublicClient;
 }
 
+type ObservedContractRead = {
+  address?: Address;
+  functionName: string;
+  args?: readonly unknown[];
+  blockNumber?: bigint;
+};
+
 function publicClientWithV2Reads({
   allowance = 10_000n,
   blockTimestamp = 100n,
@@ -139,9 +167,28 @@ function publicClientWithV2Reads({
   asyncRedeemMultiplier = 10_000,
   syncDepositMultiplier = 10_000,
   syncRedeemMultiplier = 9_500,
+  asyncDepositEnabled = true,
+  asyncRedeemEnabled = true,
+  syncDepositEnabled = true,
+  syncRedeemEnabled = true,
+  solvingGateEnabled = true,
+  solvingGateAddress = SOLVING_GATE_ADDRESS,
+  solvingPaused = false,
+  solvingGateReadError,
+  epochTimestamp = 0n,
+  epochStartTvlNumeraire = 1_000_000n,
+  epochRedeemedNumeraire = 0n,
+  epochCapNumeraire = 1_000_000n,
+  unitsRefundableUntil = 0n,
+  balanceOf = 1_000n,
+  tokenToNumeraireMultiplier = 1n,
+  blockNumber = 123n,
+  onRead,
+  onMulticall,
 }: {
   allowance?: bigint;
   blockTimestamp?: bigint;
+  blockNumber?: bigint;
   maxPriceAge?: bigint;
   maxDynamicPremiumBps?: bigint;
   anchorTimestamp?: bigint;
@@ -153,16 +200,37 @@ function publicClientWithV2Reads({
   asyncRedeemMultiplier?: number;
   syncDepositMultiplier?: number;
   syncRedeemMultiplier?: number;
+  asyncDepositEnabled?: boolean;
+  asyncRedeemEnabled?: boolean;
+  syncDepositEnabled?: boolean;
+  syncRedeemEnabled?: boolean;
+  solvingGateEnabled?: boolean;
+  solvingGateAddress?: Address;
+  solvingPaused?: boolean;
+  solvingGateReadError?: Error;
+  epochTimestamp?: bigint;
+  epochStartTvlNumeraire?: bigint;
+  epochRedeemedNumeraire?: bigint;
+  epochCapNumeraire?: bigint;
+  unitsRefundableUntil?: bigint;
+  balanceOf?: bigint;
+  tokenToNumeraireMultiplier?: bigint;
+  onRead?: (read: ObservedContractRead) => void;
+  onMulticall?: (call: { functionNames: string[]; blockNumber?: bigint }) => void;
 } = {}): PublicClient {
   async function readContract({
     address,
     functionName,
     args,
+    blockNumber,
   }: {
     address?: Address;
     functionName: string;
     args?: readonly unknown[];
+    blockNumber?: bigint;
   }) {
+    onRead?.({ address, functionName, args, blockNumber });
+
     switch (functionName) {
       case 'provisioner':
         return provisionerAddress;
@@ -182,10 +250,10 @@ function publicClientWithV2Reads({
         return args?.[2] as bigint;
       case 'tokensDetails':
         return [
-          true,
-          true,
-          true,
-          true,
+          asyncDepositEnabled,
+          asyncRedeemEnabled,
+          syncDepositEnabled,
+          syncRedeemEnabled,
           asyncDepositMultiplier,
           asyncRedeemMultiplier,
           syncDepositMultiplier,
@@ -193,10 +261,27 @@ function publicClientWithV2Reads({
           RECEIVER,
           RECEIVER,
         ];
+      case 'SOLVING_GATE_ENABLED':
+        return solvingGateEnabled;
+      case 'solvingGate':
+        return solvingGateAddress;
+      case 'paused':
+        if (solvingGateReadError) throw solvingGateReadError;
+        return solvingPaused;
       case 'getSyncRedeemDetails':
         return [maxPriceAge, 10_000n, maxDynamicPremiumBps, 0n, 0n, 0n];
       case 'getAnchorTimestamp':
         return anchorTimestamp;
+      case 'convertTokenToNumeraire':
+        return (args?.[2] as bigint) * tokenToNumeraireMultiplier;
+      case 'convertNumeraireToToken':
+        return (args?.[2] as bigint) / tokenToNumeraireMultiplier;
+      case 'getSyncRedeemEpochState':
+        return [epochTimestamp, epochStartTvlNumeraire, epochRedeemedNumeraire, epochCapNumeraire];
+      case 'userUnitsRefundableUntil':
+        return unitsRefundableUntil;
+      case 'balanceOf':
+        return balanceOf;
       default:
         throw new Error(`Unexpected read: ${functionName}`);
     }
@@ -206,13 +291,91 @@ function publicClientWithV2Reads({
     readContract,
     multicall: async ({
       contracts,
+      blockNumber,
     }: {
       contracts: readonly { functionName: string; args?: readonly unknown[] }[];
+      blockNumber?: bigint;
     }) => {
-      return Promise.all(contracts.map(readContract));
+      onMulticall?.({
+        functionNames: contracts.map((contract) => contract.functionName),
+        blockNumber,
+      });
+      return Promise.all(contracts.map((contract) => readContract({ ...contract, blockNumber })));
     },
-    getBlock: async () => ({ timestamp: blockTimestamp }),
+    getBlock: async () => ({ number: blockNumber, timestamp: blockTimestamp }),
   } as unknown as PublicClient;
+}
+
+function aeraV2QuoteClient(publicClient: PublicClient): GauntletClient {
+  const client = new GauntletClient({ evmClients: { [base.id]: publicClient } });
+  setAeraV2TestManifest(client);
+  return client;
+}
+
+function setAeraV2TestManifest(client: GauntletClient) {
+  client.setManifest({
+    version: 'test',
+    vaults: [
+      {
+        vaultId: VAULT_ID,
+        name: 'Mock Aera V2',
+        protocol: 'aera',
+        strategy: 'test',
+        deployments: [
+          {
+            chain: 'evm',
+            chainId: base.id,
+            vaultAddress: AERA_VAULT_ADDRESS,
+            vaultType: 'multi-depositor',
+            supplyToken: [{ symbol: 'USDC', address: USDC_ADDRESS, decimals: 6 }],
+          },
+        ],
+      },
+    ],
+  });
+}
+
+function aeraV2WalletClient(publicClient: PublicClient): GauntletClient {
+  const account = privateKeyToAccount(TEST_PRIVATE_KEY);
+  const client = new GauntletClient({
+    evmClients: { [base.id]: publicClient },
+    wallet: createWalletClient({ account, chain: base, transport: http() }),
+  });
+  setAeraV2TestManifest(client);
+  return client;
+}
+
+function syncWithdrawQuoteBounds({
+  kind = 'withdraw',
+  context,
+  shares = 1_000n,
+  minTokensOut = 950n,
+  tokensOut = 100n,
+  maxUnitsIn = 123n,
+}: {
+  kind?: SyncWithdrawQuoteBounds['kind'];
+  context?: Partial<SyncWithdrawQuoteContext>;
+  shares?: bigint;
+  minTokensOut?: bigint;
+  tokensOut?: bigint;
+  maxUnitsIn?: bigint;
+} = {}): SyncWithdrawQuoteBounds {
+  const quoteContext: SyncWithdrawQuoteContext = {
+    vaultId: VAULT_ID,
+    chainId: base.id,
+    tokenAddress: USDC_ADDRESS,
+    slippageBps: 100,
+    blockNumber: 123n,
+    ...context,
+    request:
+      context?.request ??
+      (kind === 'redeem'
+        ? { mode: 'shares', shares }
+        : { mode: 'amount', amount: tokensOut }),
+  };
+
+  if (kind === 'redeem') return { kind, shares, minTokensOut, context: quoteContext };
+  return { kind, tokensOut, maxUnitsIn, context: quoteContext };
 }
 
 describe('aera', () => {
@@ -329,6 +492,195 @@ describe('aera', () => {
       address: feeCalculatorAddress,
       version: ContractVersion.V1,
     });
+  });
+
+  test('reports available token modes for a mixed V2 provisioner and V1 fee calculator', async () => {
+    const client = aeraV2QuoteClient(
+      publicClientWithV2Reads({
+        provisionerAddress: '0x0000000000000000000000000000000000000021',
+        feeCalculatorAddress: '0x0000000000000000000000000000000000000022',
+        provisionerVersion: '2.0',
+        feeCalculatorVersion: '1.0',
+        asyncDepositEnabled: false,
+        asyncRedeemEnabled: true,
+        syncDepositEnabled: true,
+        syncRedeemEnabled: true,
+      })
+    );
+
+    await expect(getAeraTokenModeSupport(client, { vaultId: VAULT_ID })).resolves.toEqual({
+      asyncDeposit: false,
+      asyncRedeem: true,
+      syncDeposit: true,
+      syncRedeem: false,
+    });
+  });
+
+  test('masks sync token modes while the V2 solving gate is paused', async () => {
+    const reads: ObservedContractRead[] = [];
+    const client = aeraV2QuoteClient(
+      publicClientWithV2Reads({
+        asyncDepositEnabled: false,
+        asyncRedeemEnabled: true,
+        syncDepositEnabled: true,
+        syncRedeemEnabled: true,
+        solvingPaused: true,
+        onRead: (read) => reads.push(read),
+      })
+    );
+
+    await expect(getAeraTokenModeSupport(client, { vaultId: VAULT_ID })).resolves.toEqual({
+      asyncDeposit: false,
+      asyncRedeem: true,
+      syncDeposit: false,
+      syncRedeem: false,
+    });
+    expect(reads).toContainEqual({
+      address: SOLVING_GATE_ADDRESS,
+      functionName: 'paused',
+      args: [PROVISIONER_ADDRESS, USDC_ADDRESS],
+      blockNumber: undefined,
+    });
+  });
+
+  test('surfaces V2 solving gate read failures', async () => {
+    const error = new Error('solving gate unavailable');
+    const client = aeraV2QuoteClient(
+      publicClientWithV2Reads({ solvingGateReadError: error })
+    );
+
+    await expect(getAeraTokenModeSupport(client, { vaultId: VAULT_ID })).rejects.toBe(error);
+  });
+
+  test('treats an enabled zero-address V2 solving gate as open', async () => {
+    const reads: ObservedContractRead[] = [];
+    const client = aeraV2QuoteClient(
+      publicClientWithV2Reads({
+        asyncDepositEnabled: false,
+        asyncRedeemEnabled: true,
+        syncDepositEnabled: true,
+        syncRedeemEnabled: true,
+        solvingGateAddress: zeroAddress,
+        onRead: (read) => reads.push(read),
+      })
+    );
+
+    await expect(getAeraTokenModeSupport(client, { vaultId: VAULT_ID })).resolves.toEqual({
+      asyncDeposit: false,
+      asyncRedeem: true,
+      syncDeposit: true,
+      syncRedeem: true,
+    });
+    expect(reads.some((read) => read.functionName === 'paused')).toBe(false);
+  });
+
+  test('explicit async builds do not read the V2 solving gate', async () => {
+    const reads: ObservedContractRead[] = [];
+    const client = aeraV2WalletClient(
+      publicClientWithV2Reads({
+        solvingGateReadError: new Error('solving gate unavailable'),
+        onRead: (read) => reads.push(read),
+      })
+    );
+
+    await expect(
+      getDepositTx(client, {
+        vaultId: VAULT_ID,
+        amount: 2_000n,
+        depositMode: 'async',
+      })
+    ).resolves.toMatchObject([{ tx: { type: 'requestDeposit' } }]);
+    await expect(
+      getWithdrawTx(client, {
+        vaultId: VAULT_ID,
+        shares: 100n,
+        depositMode: 'async',
+      })
+    ).resolves.toMatchObject([{ tx: { type: 'requestRedeem' } }]);
+
+    expect(
+      reads.some(
+        (read) =>
+          read.functionName === 'SOLVING_GATE_ENABLED' ||
+          read.functionName === 'solvingGate' ||
+          read.functionName === 'paused'
+      )
+    ).toBe(false);
+  });
+
+  test('explicit async builds still validate async token modes without gate reads', async () => {
+    const reads: ObservedContractRead[] = [];
+    const client = aeraV2WalletClient(
+      publicClientWithV2Reads({
+        asyncDepositEnabled: false,
+        asyncRedeemEnabled: false,
+        solvingGateReadError: new Error('solving gate unavailable'),
+        onRead: (read) => reads.push(read),
+      })
+    );
+
+    await expect(
+      getDepositTx(client, {
+        vaultId: VAULT_ID,
+        amount: 2_000n,
+        depositMode: 'async',
+      })
+    ).rejects.toMatchObject({
+      name: UnsupportedDepositModeError.name,
+      requested: 'async',
+    });
+    await expect(
+      getWithdrawTx(client, {
+        vaultId: VAULT_ID,
+        shares: 100n,
+        depositMode: 'async',
+      })
+    ).rejects.toMatchObject({
+      name: UnsupportedDepositModeError.name,
+      requested: 'async',
+    });
+
+    expect(
+      reads.some(
+        (read) =>
+          read.functionName === 'SOLVING_GATE_ENABLED' ||
+          read.functionName === 'solvingGate' ||
+          read.functionName === 'paused'
+      )
+    ).toBe(false);
+  });
+
+  test('rejects sync withdraw quotes when the fee calculator is not V2', async () => {
+    const client = aeraV2QuoteClient(
+      publicClientWithV2Reads({
+        feeCalculatorAddress: '0x00000000000000000000000000000000000000f2',
+        feeCalculatorVersion: '1.0',
+      })
+    );
+
+    await expect(
+      getSyncWithdrawQuote(client, {
+        vaultId: VAULT_ID,
+        amount: 100n,
+      })
+    ).rejects.toThrow('Aera: sync redeem requires a V2 price and fee calculator');
+  });
+
+  test('rejects sync withdraw transactions when the fee calculator is not V2', async () => {
+    const client = aeraV2WalletClient(
+      publicClientWithV2Reads({
+        feeCalculatorAddress: '0x00000000000000000000000000000000000000f2',
+        feeCalculatorVersion: '1.0',
+      })
+    );
+
+    await expect(
+      getWithdrawTx(client, {
+        vaultId: VAULT_ID,
+        amount: 100n,
+        depositMode: 'sync',
+      })
+    ).rejects.toThrow('Aera: sync redeem requires a V2 price and fee calculator');
   });
 
   test('builds V2 deposit receiver approval as a receiver-signed standalone transaction', async () => {
@@ -519,33 +871,7 @@ describe('aera', () => {
   });
 
   test('uses V2 sync redeem premium and ceil rounding for sync withdraw bounds', async () => {
-    const account = privateKeyToAccount(TEST_PRIVATE_KEY);
-    const publicClient = publicClientWithV2Reads({ allowance: 0n });
-    const walletClient = createWalletClient({ account, chain: base, transport: http() });
-    const client = new GauntletClient({
-      evmClients: { [base.id]: publicClient },
-      wallet: walletClient,
-    });
-    client.setManifest({
-      version: 'test',
-      vaults: [
-        {
-          vaultId: VAULT_ID,
-          name: 'Mock Aera V2',
-          protocol: 'aera',
-          strategy: 'test',
-          deployments: [
-            {
-              chain: 'evm',
-              chainId: base.id,
-              vaultAddress: AERA_VAULT_ADDRESS,
-              vaultType: 'multi-depositor',
-              supplyToken: [{ symbol: 'USDC', address: USDC_ADDRESS, decimals: 6 }],
-            },
-          ],
-        },
-      ],
-    });
+    const client = aeraV2WalletClient(publicClientWithV2Reads({ allowance: 0n }));
 
     const [withdraw] = await getWithdrawTx(client, {
       vaultId: VAULT_ID,
@@ -571,8 +897,6 @@ describe('aera', () => {
   });
 
   test('decodes V2 provisioner revert selectors from the shipped ABI', () => {
-    // The portfolio maps these sync redeem reverts to user-facing copy; keeping them in the
-    // shipped ABI lets viem decode `errorName` directly instead of raw selector data.
     const syncRedeemErrorNames = [
       'Aera__MaxUnitsInExceeded',
       'Aera__MinTokensOutNotMet',
@@ -596,39 +920,635 @@ describe('aera', () => {
     }
   });
 
-  test('rejects V2 sync withdraw and redeem quotes when sync redeem price is stale', async () => {
-    const account = privateKeyToAccount(TEST_PRIVATE_KEY);
-    const publicClient = publicClientWithV2Reads({
-      anchorTimestamp: 100n,
-      blockTimestamp: 211n,
-      maxDynamicPremiumBps: 4_999n,
-      maxPriceAge: 100n,
+  test('pins V2 sync withdraw bounds from the supplied quote', async () => {
+    const client = aeraV2WalletClient(publicClientWithV2Reads());
+
+    const [withdraw] = await getWithdrawTx(client, {
+      vaultId: VAULT_ID,
+      amount: 100n,
+      depositMode: 'sync',
+      syncWithdrawQuote: syncWithdrawQuoteBounds(),
     });
-    const walletClient = createWalletClient({ account, chain: base, transport: http() });
-    const client = new GauntletClient({
-      evmClients: { [base.id]: publicClient },
-      wallet: walletClient,
+
+    expect(withdraw.tx.type).toBe('withdraw');
+    expect(withdraw.tx.args[1]).toBe(100n);
+    expect(withdraw.tx.args[2]).toBe(123n);
+  });
+
+  test('treats supplied sync quote bounds as a sync withdraw request', async () => {
+    const client = aeraV2WalletClient(publicClientWithV2Reads());
+
+    const [withdraw] = await getWithdrawTx(client, {
+      vaultId: VAULT_ID,
+      amount: 100n,
+      syncWithdrawQuote: syncWithdrawQuoteBounds(),
     });
-    client.setManifest({
-      version: 'test',
-      vaults: [
-        {
+
+    expect(withdraw.tx.type).toBe('withdraw');
+    expect(withdraw.tx.args[1]).toBe(100n);
+    expect(withdraw.tx.args[2]).toBe(123n);
+  });
+
+  test('inherits generated quote slippage when building a sync withdraw transaction', async () => {
+    const client = aeraV2WalletClient(publicClientWithV2Reads());
+    const quote = await getSyncWithdrawQuote(client, {
+      vaultId: VAULT_ID,
+      amount: 100n,
+      account: privateKeyToAccount(TEST_PRIVATE_KEY).address,
+      slippageBps: 50,
+    });
+
+    const [withdraw] = await getWithdrawTx(client, {
+      vaultId: VAULT_ID,
+      amount: 100n,
+      syncWithdrawQuote: quote,
+    });
+
+    expect(withdraw.tx.type).toBe('withdraw');
+    expect(withdraw.tx.args[1]).toBe(quote.tokensOut);
+    expect(withdraw.tx.args[2]).toBe(quote.maxUnitsIn);
+
+    await expect(
+      getWithdrawTx(client, {
+        vaultId: VAULT_ID,
+        amount: 100n,
+        slippageBps: 51,
+        syncWithdrawQuote: quote,
+      })
+    ).rejects.toBeInstanceOf(InvalidWithdrawParamsError);
+  });
+
+  test('builds sync redeem transactions from generated quote bounds', async () => {
+    const quoteClient = aeraV2WalletClient(
+      publicClientWithV2Reads({ syncRedeemMultiplier: 9_500 })
+    );
+    const quote = await getSyncWithdrawQuote(quoteClient, {
+      vaultId: VAULT_ID,
+      shares: 1_000n,
+      account: privateKeyToAccount(TEST_PRIVATE_KEY).address,
+      slippageBps: 100,
+    });
+    const buildClient = aeraV2WalletClient(
+      publicClientWithV2Reads({ syncRedeemMultiplier: 5_000 })
+    );
+
+    const [redeem] = await getWithdrawTx(buildClient, {
+      vaultId: VAULT_ID,
+      shares: 1_000n,
+      syncWithdrawQuote: quote,
+    });
+
+    expect(redeem.tx.type).toBe('redeem');
+    expect(redeem.tx.args[1]).toBe(quote.shares);
+    expect(redeem.tx.args[2]).toBe(quote.minTokensOut);
+  });
+
+  test('rejects sync quote bounds for async withdraw requests', async () => {
+    const client = aeraV2WalletClient(publicClientWithV2Reads());
+
+    await expect(
+      getWithdrawTx(client, {
+        vaultId: VAULT_ID,
+        amount: 100n,
+        depositMode: 'async',
+        syncWithdrawQuote: syncWithdrawQuoteBounds(),
+      })
+    ).rejects.toBeInstanceOf(InvalidWithdrawParamsError);
+  });
+
+  test('does not silently fall back to async when supplied sync quote bounds are unsupported', async () => {
+    const client = aeraV2WalletClient(
+      publicClientWithV2Reads({
+        asyncRedeemEnabled: true,
+        syncRedeemEnabled: false,
+      })
+    );
+
+    await expect(
+      getWithdrawTx(client, {
+        vaultId: VAULT_ID,
+        amount: 100n,
+        syncWithdrawQuote: syncWithdrawQuoteBounds(),
+      })
+    ).rejects.toThrow('sync operations (available: async)');
+  });
+
+  test('rejects sync quote bounds whose exact amount differs from the transaction', async () => {
+    const client = aeraV2WalletClient(publicClientWithV2Reads());
+
+    await expect(
+      getWithdrawTx(client, {
+        vaultId: VAULT_ID,
+        amount: 101n,
+        syncWithdrawQuote: syncWithdrawQuoteBounds({
+          context: { request: { mode: 'amount', amount: 101n } },
+        }),
+      })
+    ).rejects.toBeInstanceOf(InvalidWithdrawParamsError);
+  });
+
+  test('rejects sync quote bounds whose exact shares differ from the transaction', async () => {
+    const client = aeraV2WalletClient(publicClientWithV2Reads());
+
+    await expect(
+      getWithdrawTx(client, {
+        vaultId: VAULT_ID,
+        shares: 1_001n,
+        syncWithdrawQuote: syncWithdrawQuoteBounds({
+          kind: 'redeem',
+          shares: 1_000n,
+          minTokensOut: 950n,
+          context: { request: { mode: 'shares', shares: 1_001n } },
+        }),
+      })
+    ).rejects.toBeInstanceOf(InvalidWithdrawParamsError);
+  });
+
+  test('accepts sync quote bounds produced at an earlier block', async () => {
+    const client = aeraV2WalletClient(publicClientWithV2Reads({ blockNumber: 124n }));
+
+    await expect(
+      getWithdrawTx(client, {
+        vaultId: VAULT_ID,
+        amount: 100n,
+        syncWithdrawQuote: syncWithdrawQuoteBounds(),
+      })
+    ).resolves.toMatchObject([{ tx: { type: 'withdraw' } }]);
+  });
+
+  test.each([
+    ['vault', { vaultId: V2_VAULT_ID }],
+    ['chain', { chainId: 1 }],
+    ['token', { tokenAddress: RECEIVER }],
+  ] satisfies [string, Partial<SyncWithdrawQuoteContext>][])(
+    'rejects sync quote bounds from a different %s',
+    async (_field, context) => {
+      const client = aeraV2WalletClient(publicClientWithV2Reads());
+
+      await expect(
+        getWithdrawTx(client, {
           vaultId: VAULT_ID,
-          name: 'Mock Aera V2',
-          protocol: 'aera',
-          strategy: 'test',
-          deployments: [
-            {
-              chain: 'evm',
-              chainId: base.id,
-              vaultAddress: AERA_VAULT_ADDRESS,
-              vaultType: 'multi-depositor',
-              supplyToken: [{ symbol: 'USDC', address: USDC_ADDRESS, decimals: 6 }],
-            },
-          ],
-        },
-      ],
+          amount: 100n,
+          depositMode: 'sync',
+          syncWithdrawQuote: syncWithdrawQuoteBounds({ context }),
+        })
+      ).rejects.toBeInstanceOf(InvalidWithdrawParamsError);
+    }
+  );
+
+  test('rejects account-scoped sync quote bounds produced for a different wallet', async () => {
+    const client = aeraV2WalletClient(publicClientWithV2Reads());
+
+    await expect(
+      getWithdrawTx(client, {
+        vaultId: VAULT_ID,
+        amount: 100n,
+        depositMode: 'sync',
+        syncWithdrawQuote: syncWithdrawQuoteBounds({
+          context: { account: RECEIVER },
+        }),
+      })
+    ).rejects.toBeInstanceOf(InvalidWithdrawParamsError);
+  });
+
+  test('quotes a sync redeem by shares with rate split, slippage, and capacity', async () => {
+    const client = aeraV2QuoteClient(publicClientWithV2Reads());
+
+    const quote = await getSyncWithdrawQuote(client, {
+      vaultId: VAULT_ID,
+      shares: 1_000n,
+      account: RECEIVER,
+      slippageBps: 0,
     });
+
+    expect(quote.kind).toBe('redeem');
+    expect(quote.shares).toBe(1_000n);
+    expect(quote.tokensOut).toBe(950n); // 1000 * 9500/10000
+    expect(quote.minTokensOut).toBe(950n); // slippage 0
+    expect(quote.maxUnitsIn).toBe(1_000n);
+    expect(quote.rate).toEqual({
+      baseMultiplierBps: 9_500n,
+      dynamicPremiumBps: 0n,
+      effectiveMultiplierBps: 9_500n,
+    });
+    expect(quote.capacity.remainingNumeraire).toBe(1_000_000n);
+    expect(quote.capacity.remainingTokens).toBe(1_000_000n);
+    expect(quote.capacity.requestNumeraire).toBe(950n);
+    expect(quote.capacity.exceedsCapacity).toBe(false);
+    expect(quote.unitsLockedUntil).toBe(0n);
+  });
+
+  test('quotes a sync withdraw with exact token out and slippage-bounded shares', async () => {
+    const client = aeraV2QuoteClient(publicClientWithV2Reads());
+
+    const quote = await getSyncWithdrawQuote(client, {
+      vaultId: VAULT_ID,
+      amount: 100n,
+      account: RECEIVER,
+      slippageBps: 100,
+    });
+
+    expect(quote.kind).toBe('withdraw');
+    expect(quote.tokensOut).toBe(100n);
+    expect(quote.minTokensOut).toBe(100n);
+    expect(quote.shares).toBe(106n); // ceil(100 * 10000/9500)
+    expect(quote.maxUnitsIn).toBe(108n); // ceil(106 * 10100/10000)
+  });
+
+  test('quotes sync withdraws from a single block snapshot', async () => {
+    const quoteBlockNumber = 47_000_123n;
+    const reads: ObservedContractRead[] = [];
+    const multicalls: { functionNames: string[]; blockNumber?: bigint }[] = [];
+    const client = aeraV2QuoteClient(
+      publicClientWithV2Reads({
+        blockNumber: quoteBlockNumber,
+        provisionerAddress: '0x0000000000000000000000000000000000000a01',
+        feeCalculatorAddress: '0x0000000000000000000000000000000000000f01',
+        onRead: (read) => reads.push(read),
+        onMulticall: (call) => multicalls.push(call),
+      })
+    );
+
+    await getSyncWithdrawQuote(client, {
+      vaultId: VAULT_ID,
+      shares: 1_000n,
+      account: RECEIVER,
+      slippageBps: 0,
+    });
+
+    expect(reads.length).toBeGreaterThan(0);
+    expect(reads.every((read) => read.blockNumber === quoteBlockNumber)).toBe(true);
+    expect(reads).toContainEqual({
+      address: SOLVING_GATE_ADDRESS,
+      functionName: 'paused',
+      args: ['0x0000000000000000000000000000000000000a01', USDC_ADDRESS],
+      blockNumber: quoteBlockNumber,
+    });
+    expect(multicalls.length).toBeGreaterThan(0);
+    expect(multicalls.every((call) => call.blockNumber === quoteBlockNumber)).toBe(true);
+  });
+
+  test('computes price-age dynamic premium with equality freshness and ceil rounding', async () => {
+    const boundaryClient = aeraV2QuoteClient(
+      publicClientWithV2Reads({
+        anchorTimestamp: 100n,
+        blockTimestamp: 200n,
+        maxPriceAge: 100n,
+        maxDynamicPremiumBps: 4_999n,
+      })
+    );
+
+    await expect(
+      getSyncWithdrawQuote(boundaryClient, {
+        vaultId: VAULT_ID,
+        shares: 1_000n,
+        account: RECEIVER,
+        slippageBps: 0,
+      })
+    ).resolves.toMatchObject({
+      rate: {
+        baseMultiplierBps: 9_500n,
+        dynamicPremiumBps: 4_999n,
+        effectiveMultiplierBps: 4_501n,
+      },
+    });
+
+    const roundingClient = aeraV2QuoteClient(
+      publicClientWithV2Reads({
+        anchorTimestamp: 199n,
+        blockTimestamp: 200n,
+        maxPriceAge: 3n,
+        maxDynamicPremiumBps: 2n,
+      })
+    );
+
+    const quote = await getSyncWithdrawQuote(roundingClient, {
+      vaultId: VAULT_ID,
+      shares: 1_000n,
+      account: RECEIVER,
+      slippageBps: 0,
+    });
+
+    expect(quote.rate.dynamicPremiumBps).toBe(1n);
+    expect(quote.rate.effectiveMultiplierBps).toBe(9_499n);
+  });
+
+  test('uses the sync redeem multiplier tuple index for quotes', async () => {
+    const client = aeraV2QuoteClient(
+      publicClientWithV2Reads({
+        asyncRedeemMultiplier: 8_100,
+        syncDepositMultiplier: 8_200,
+        syncRedeemMultiplier: 8_300,
+      })
+    );
+
+    const quote = await getSyncWithdrawQuote(client, {
+      vaultId: VAULT_ID,
+      shares: 1_000n,
+      account: RECEIVER,
+      slippageBps: 0,
+    });
+
+    expect(quote.tokensOut).toBe(830n);
+    expect(quote.rate.baseMultiplierBps).toBe(8_300n);
+  });
+
+  test('accounts sync redeem capacity from token output numeraire and allows equality', async () => {
+    const client = aeraV2QuoteClient(
+      publicClientWithV2Reads({
+        epochCapNumeraire: 1_900n,
+        tokenToNumeraireMultiplier: 2n,
+      })
+    );
+
+    const quote = await getSyncWithdrawQuote(client, {
+      vaultId: VAULT_ID,
+      shares: 1_000n,
+      account: RECEIVER,
+      slippageBps: 0,
+    });
+
+    expect(quote.tokensOut).toBe(950n);
+    expect(quote.capacity.requestNumeraire).toBe(1_900n);
+    expect(quote.capacity.remainingNumeraire).toBe(1_900n);
+    expect(quote.capacity.exceedsCapacity).toBe(false);
+
+    const exceededClient = aeraV2QuoteClient(
+      publicClientWithV2Reads({
+        epochCapNumeraire: 1_899n,
+        tokenToNumeraireMultiplier: 2n,
+      })
+    );
+
+    await expect(
+      getSyncWithdrawQuote(exceededClient, {
+        vaultId: VAULT_ID,
+        shares: 1_000n,
+        account: RECEIVER,
+        slippageBps: 0,
+      })
+    ).resolves.toMatchObject({
+      capacity: {
+        requestNumeraire: 1_900n,
+        remainingNumeraire: 1_899n,
+        exceedsCapacity: true,
+      },
+    });
+  });
+
+  test('flags when a sync redeem exceeds remaining epoch capacity', async () => {
+    const client = aeraV2QuoteClient(publicClientWithV2Reads({ epochCapNumeraire: 500n }));
+
+    const quote = await getSyncWithdrawQuote(client, {
+      vaultId: VAULT_ID,
+      shares: 1_000n,
+      account: RECEIVER,
+      slippageBps: 0,
+    });
+
+    expect(quote.tokensOut).toBe(950n);
+    expect(quote.capacity.remainingNumeraire).toBe(500n);
+    expect(quote.capacity.exceedsCapacity).toBe(true);
+  });
+
+  test('treats zero-cap epoch state as instant unavailable', async () => {
+    const client = aeraV2QuoteClient(
+      publicClientWithV2Reads({
+        epochStartTvlNumeraire: 0n,
+        epochCapNumeraire: 0n,
+      })
+    );
+
+    const quote = await getSyncWithdrawQuote(client, {
+      vaultId: VAULT_ID,
+      shares: 1_000n,
+      account: RECEIVER,
+      slippageBps: 0,
+    });
+
+    expect(quote.capacity.remainingNumeraire).toBe(0n);
+    expect(quote.capacity.exceedsCapacity).toBe(true);
+  });
+
+  test('surfaces a units lock and rejects a stale-price sync quote', async () => {
+    const lockedClient = aeraV2QuoteClient(publicClientWithV2Reads({ unitsRefundableUntil: 999n }));
+    const locked = await getSyncWithdrawQuote(lockedClient, {
+      vaultId: VAULT_ID,
+      shares: 1_000n,
+      account: RECEIVER,
+      slippageBps: 0,
+    });
+    expect(locked.unitsLockedUntil).toBe(999n);
+
+    const staleClient = aeraV2QuoteClient(
+      publicClientWithV2Reads({ blockTimestamp: 1_000n, anchorTimestamp: 100n, maxPriceAge: 100n })
+    );
+    await expect(
+      getSyncWithdrawQuote(staleClient, {
+        vaultId: VAULT_ID,
+        shares: 1_000n,
+        account: RECEIVER,
+        slippageBps: 0,
+      })
+    ).rejects.toBeInstanceOf(StalePriceError);
+  });
+
+  test('rejects full-balance transaction builds when quoted account differs from wallet', async () => {
+    const walletAccount = privateKeyToAccount(TEST_PRIVATE_KEY).address;
+    const quotedAccount = RECEIVER;
+    let balanceOfReads = 0;
+    const publicClient = publicClientWithV2Reads();
+    const guardedPublicClient = {
+      ...publicClient,
+      readContract: async (params: Parameters<typeof publicClient.readContract>[0]) => {
+        if (params.functionName === 'balanceOf') {
+          balanceOfReads += 1;
+        }
+        return publicClient.readContract(params);
+      },
+    } as PublicClient;
+    const client = aeraV2WalletClient(guardedPublicClient);
+
+    expect(quotedAccount.toLowerCase()).not.toBe(walletAccount.toLowerCase());
+    await expect(
+      getWithdrawTx(client, {
+        vaultId: VAULT_ID,
+        account: quotedAccount,
+        entireAmount: true,
+        depositMode: 'sync',
+      })
+    ).rejects.toMatchObject({
+      name: AccountMismatchError.name,
+      expected: walletAccount,
+      received: quotedAccount,
+    });
+    expect(balanceOfReads).toBe(0);
+  });
+
+  test('builds full-balance transactions from the wallet account when no explicit account is passed', async () => {
+    const client = aeraV2WalletClient(publicClientWithV2Reads());
+
+    const [redeem] = await getWithdrawTx(client, {
+      vaultId: VAULT_ID,
+      entireAmount: true,
+      depositMode: 'sync',
+    });
+
+    expect(redeem.tx.type).toBe('redeem');
+    expect(redeem.tx.account).toBe(privateKeyToAccount(TEST_PRIVATE_KEY).address);
+  });
+
+  test('rejects stale full-balance sync quote shares', async () => {
+    const walletAccount = privateKeyToAccount(TEST_PRIVATE_KEY).address;
+    const client = aeraV2WalletClient(publicClientWithV2Reads({ balanceOf: 1_000n }));
+
+    await expect(
+      getWithdrawTx(client, {
+        vaultId: VAULT_ID,
+        entireAmount: true,
+        depositMode: 'sync',
+        syncWithdrawQuote: syncWithdrawQuoteBounds({
+          kind: 'redeem',
+          shares: 999n,
+          minTokensOut: 949n,
+          context: {
+            account: walletAccount,
+            request: { mode: 'entireAmount', account: walletAccount },
+          },
+        }),
+      })
+    ).rejects.toBeInstanceOf(InvalidWithdrawParamsError);
+  });
+
+  test('quotes explicit sync withdraw modes without an account and skips units-lock reads', async () => {
+    const client = aeraV2QuoteClient(publicClientWithV2Reads({ unitsRefundableUntil: 999n }));
+
+    const byAmount = await getSyncWithdrawQuote(client, {
+      vaultId: VAULT_ID,
+      amount: 100n,
+      slippageBps: 0,
+    });
+
+    expect(byAmount.kind).toBe('withdraw');
+    expect(byAmount.unitsLockedUntil).toBeUndefined();
+
+    const byShares = await getSyncWithdrawQuote(client, {
+      vaultId: VAULT_ID,
+      shares: 1_000n,
+      slippageBps: 0,
+    });
+
+    expect(byShares.kind).toBe('redeem');
+    expect(byShares.unitsLockedUntil).toBeUndefined();
+  });
+
+  test('rejects entire-amount sync quotes without an explicit account at runtime', async () => {
+    const client = aeraV2QuoteClient(publicClientWithV2Reads());
+
+    await expect(
+      getSyncWithdrawQuote(client, {
+        vaultId: VAULT_ID,
+        entireAmount: true,
+      } as unknown as SyncWithdrawQuoteParams)
+    ).rejects.toMatchObject({
+      name: AccountRequiredError.name,
+      message:
+        'No account specified. Pass the required account, or configure a wallet when building transactions.',
+    });
+  });
+
+  test('rejects ambiguous sync quote sizing params at runtime', async () => {
+    const client = aeraV2QuoteClient(publicClientWithV2Reads());
+
+    await expect(
+      getSyncWithdrawQuote(client, {
+        vaultId: VAULT_ID,
+        amount: 100n,
+        shares: 1_000n,
+      } as unknown as SyncWithdrawQuoteParams)
+    ).rejects.toBeInstanceOf(InvalidWithdrawParamsError);
+  });
+
+  test('rejects ambiguous withdraw transaction sizing params at runtime', async () => {
+    const client = aeraV2WalletClient(publicClientWithV2Reads());
+
+    await expect(
+      getWithdrawTx(client, {
+        vaultId: VAULT_ID,
+        amount: 100n,
+        shares: 1_000n,
+      } as unknown as EvmWithdrawParams)
+    ).rejects.toBeInstanceOf(InvalidWithdrawParamsError);
+
+    await expect(
+      getWithdrawTx(client, {
+        vaultId: VAULT_ID,
+        amount: 100n,
+        entireAmount: true,
+      } as unknown as EvmWithdrawParams)
+    ).rejects.toBeInstanceOf(InvalidWithdrawParamsError);
+  });
+
+  test('rejects sync quote and transaction builds that would submit zero bounds', async () => {
+    const quoteClient = aeraV2QuoteClient(publicClientWithV2Reads());
+
+    await expect(
+      getSyncWithdrawQuote(quoteClient, {
+        vaultId: VAULT_ID,
+        shares: 1_000n,
+        account: RECEIVER,
+        slippageBps: 10_001,
+      })
+    ).rejects.toBeInstanceOf(InvalidSlippageBPSError);
+
+    await expect(
+      getSyncWithdrawQuote(quoteClient, {
+        vaultId: VAULT_ID,
+        shares: 1_000n,
+        account: RECEIVER,
+        slippageBps: 10_000,
+      })
+    ).rejects.toBeInstanceOf(InvalidSyncWithdrawBoundError);
+
+    await expect(
+      getSyncWithdrawQuote(quoteClient, {
+        vaultId: VAULT_ID,
+        amount: 0n,
+        account: RECEIVER,
+        slippageBps: 0,
+      })
+    ).rejects.toBeInstanceOf(InvalidSyncWithdrawBoundError);
+
+    const txClient = aeraV2WalletClient(publicClientWithV2Reads());
+
+    await expect(
+      getWithdrawTx(txClient, {
+        vaultId: VAULT_ID,
+        shares: 1_000n,
+        depositMode: 'sync',
+        slippageBps: 10_000,
+      })
+    ).rejects.toBeInstanceOf(InvalidSyncWithdrawBoundError);
+
+    await expect(
+      getWithdrawTx(txClient, {
+        vaultId: VAULT_ID,
+        amount: 0n,
+        depositMode: 'sync',
+        slippageBps: 0,
+      })
+    ).rejects.toBeInstanceOf(InvalidSyncWithdrawBoundError);
+  });
+
+  test('rejects V2 sync withdraw and redeem quotes when sync redeem price is stale', async () => {
+    const client = aeraV2WalletClient(
+      publicClientWithV2Reads({
+        anchorTimestamp: 100n,
+        blockTimestamp: 211n,
+        maxDynamicPremiumBps: 4_999n,
+        maxPriceAge: 100n,
+      })
+    );
 
     await expect(
       getWithdrawTx(client, {
@@ -647,34 +1567,93 @@ describe('aera', () => {
     ).rejects.toThrow(StalePriceError);
   });
 
+  test('rejects sync quotes when sync redeem is disabled and reports async availability', async () => {
+    const client = aeraV2QuoteClient(
+      publicClientWithV2Reads({
+        asyncRedeemEnabled: true,
+        syncRedeemEnabled: false,
+      })
+    );
+
+    await expect(
+      getSyncWithdrawQuote(client, {
+        vaultId: VAULT_ID,
+        shares: 1_000n,
+        account: RECEIVER,
+      })
+    ).rejects.toThrow('sync operations (available: async)');
+  });
+
+  test('rejects sync quotes and quoted builds while the solving gate is paused', async () => {
+    const publicClient = publicClientWithV2Reads({
+      asyncRedeemEnabled: true,
+      syncRedeemEnabled: true,
+      solvingPaused: true,
+    });
+
+    await expect(
+      getSyncWithdrawQuote(aeraV2QuoteClient(publicClient), {
+        vaultId: VAULT_ID,
+        amount: 100n,
+      })
+    ).rejects.toThrow('sync operations (available: async)');
+
+    await expect(
+      getWithdrawTx(aeraV2WalletClient(publicClient), {
+        vaultId: VAULT_ID,
+        amount: 100n,
+        syncWithdrawQuote: syncWithdrawQuoteBounds(),
+      })
+    ).rejects.toThrow('sync operations (available: async)');
+  });
+
+  test('resolves withdraw mode from live redeem support without silent fallback', async () => {
+    const asyncOnly = aeraV2WalletClient(
+      publicClientWithV2Reads({
+        asyncRedeemEnabled: true,
+        syncRedeemEnabled: false,
+      })
+    );
+
+    await expect(
+      getWithdrawTx(asyncOnly, {
+        vaultId: VAULT_ID,
+        shares: 1_000n,
+      })
+    ).resolves.toMatchObject([{ tx: { type: 'requestRedeem' } }]);
+
+    const syncOnly = aeraV2WalletClient(
+      publicClientWithV2Reads({
+        asyncRedeemEnabled: false,
+        syncRedeemEnabled: true,
+      })
+    );
+
+    await expect(
+      getWithdrawTx(syncOnly, {
+        vaultId: VAULT_ID,
+        amount: 100n,
+        slippageBps: 0,
+      })
+    ).resolves.toMatchObject([{ tx: { type: 'withdraw' } }]);
+
+    const noModes = aeraV2WalletClient(
+      publicClientWithV2Reads({
+        asyncRedeemEnabled: false,
+        syncRedeemEnabled: false,
+      })
+    );
+
+    await expect(
+      getWithdrawTx(noModes, {
+        vaultId: VAULT_ID,
+        amount: 100n,
+      })
+    ).rejects.toThrow('async operations (available: none)');
+  });
+
   test('passes async provisioner solver tip and max price age overrides', async () => {
-    const account = privateKeyToAccount(TEST_PRIVATE_KEY);
-    const publicClient = publicClientWithV2Reads();
-    const walletClient = createWalletClient({ account, chain: base, transport: http() });
-    const client = new GauntletClient({
-      evmClients: { [base.id]: publicClient },
-      wallet: walletClient,
-    });
-    client.setManifest({
-      version: 'test',
-      vaults: [
-        {
-          vaultId: VAULT_ID,
-          name: 'Mock Aera V2',
-          protocol: 'aera',
-          strategy: 'test',
-          deployments: [
-            {
-              chain: 'evm',
-              chainId: base.id,
-              vaultAddress: AERA_VAULT_ADDRESS,
-              vaultType: 'multi-depositor',
-              supplyToken: [{ symbol: 'USDC', address: USDC_ADDRESS, decimals: 6 }],
-            },
-          ],
-        },
-      ],
-    });
+    const client = aeraV2WalletClient(publicClientWithV2Reads());
 
     const [deposit] = await getDepositTx(client, {
       vaultId: VAULT_ID,
@@ -704,36 +1683,12 @@ describe('aera', () => {
   });
 
   test('applies async solver tips and provisioner multipliers to bounds', async () => {
-    const account = privateKeyToAccount(TEST_PRIVATE_KEY);
-    const publicClient = publicClientWithV2Reads({
-      asyncDepositMultiplier: 9_000,
-      asyncRedeemMultiplier: 8_000,
-    });
-    const walletClient = createWalletClient({ account, chain: base, transport: http() });
-    const client = new GauntletClient({
-      evmClients: { [base.id]: publicClient },
-      wallet: walletClient,
-    });
-    client.setManifest({
-      version: 'test',
-      vaults: [
-        {
-          vaultId: VAULT_ID,
-          name: 'Mock Aera V2',
-          protocol: 'aera',
-          strategy: 'test',
-          deployments: [
-            {
-              chain: 'evm',
-              chainId: base.id,
-              vaultAddress: AERA_VAULT_ADDRESS,
-              vaultType: 'multi-depositor',
-              supplyToken: [{ symbol: 'USDC', address: USDC_ADDRESS, decimals: 6 }],
-            },
-          ],
-        },
-      ],
-    });
+    const client = aeraV2WalletClient(
+      publicClientWithV2Reads({
+        asyncDepositMultiplier: 9_000,
+        asyncRedeemMultiplier: 8_000,
+      })
+    );
 
     const [deposit] = await getDepositTx(client, {
       vaultId: VAULT_ID,
@@ -1382,15 +2337,27 @@ describe('aera V2 sync fork', () => {
 
       // ── Sync Redeem by shares ─────────────────────────────────────────────────
 
+      const redeemQuote = await getSyncWithdrawQuote(client, {
+        vaultId: V2_VAULT_ID,
+        shares: units,
+        account: account.address,
+        slippageBps: 100,
+      });
+      expect(redeemQuote.kind).toBe('redeem');
+      expect(redeemQuote.shares).toBe(units);
+      expect(redeemQuote.capacity.exceedsCapacity).toBe(false);
+
       // No vault-unit approval needed for sync redeem — units are burned directly
       const redeemSteps = await getWithdrawTx(client, {
         vaultId: V2_VAULT_ID,
         shares: units,
-        depositMode: 'sync',
         slippageBps: 100,
+        syncWithdrawQuote: redeemQuote,
       });
       expect(redeemSteps).toHaveLength(1);
       expect(redeemSteps[0].tx.type).toBe('redeem');
+      expect(redeemSteps[0].tx.args[1]).toBe(redeemQuote.shares);
+      expect(redeemSteps[0].tx.args[2]).toBe(redeemQuote.minTokensOut);
       expect(redeemSteps[0].tx.args[3]).toBe(account.address);
 
       const redeemReceipt = await sendTransactionAndWait(testClient, {
@@ -1410,6 +2377,7 @@ describe('aera V2 sync fork', () => {
       expect(redeemReceiver).toBe(account.address);
       expect(unitsIn).toBe(units);
       expect(tokensOut).toBeGreaterThan(0n);
+      expect(tokensOut).toBeGreaterThanOrEqual(redeemQuote.minTokensOut);
 
       const usdcAfterRedeem = await publicClient.readContract({
         address: USDC_ADDRESS,
@@ -1490,22 +2458,43 @@ describe('aera V2 sync fork', () => {
 
       const WITHDRAW_AMOUNT = V2_DEPOSIT_AMOUNT / 2n;
 
+      const withdrawQuote = await getSyncWithdrawQuote(client, {
+        vaultId: V2_VAULT_ID,
+        amount: WITHDRAW_AMOUNT,
+        account: account.address,
+        slippageBps: 100,
+      });
+      expect(withdrawQuote.kind).toBe('withdraw');
+      expect(withdrawQuote.tokensOut).toBe(WITHDRAW_AMOUNT);
+      expect(withdrawQuote.capacity.exceedsCapacity).toBe(false);
+
       // Sync withdraw by exact token needs no vault-unit approval
       const withdrawSteps = await getWithdrawTx(client, {
         vaultId: V2_VAULT_ID,
         amount: WITHDRAW_AMOUNT,
-        depositMode: 'sync',
         slippageBps: 100,
+        syncWithdrawQuote: withdrawQuote,
       });
       expect(withdrawSteps).toHaveLength(1);
       expect(withdrawSteps[0].tx.type).toBe('withdraw');
+      expect(withdrawSteps[0].tx.args[1]).toBe(withdrawQuote.tokensOut);
+      expect(withdrawSteps[0].tx.args[2]).toBe(withdrawQuote.maxUnitsIn);
       expect(withdrawSteps[0].tx.args[3]).toBe(account.address);
 
-      await sendTransactionAndWait(testClient, {
+      const withdrawReceipt = await sendTransactionAndWait(testClient, {
         to: withdrawSteps[0].payload.to,
         data: withdrawSteps[0].payload.data,
         account: account.address,
       });
+
+      const redeemedEvents = parseEventLogs({
+        abi: provisionerV2Abi,
+        eventName: 'Redeemed',
+        logs: withdrawReceipt.logs,
+      });
+      expect(redeemedEvents).toHaveLength(1);
+      expect(redeemedEvents[0].args.tokensOut).toBe(withdrawQuote.tokensOut);
+      expect(redeemedEvents[0].args.unitsIn).toBeLessThanOrEqual(withdrawQuote.maxUnitsIn);
 
       const usdcAfterWithdraw = await publicClient.readContract({
         address: USDC_ADDRESS,

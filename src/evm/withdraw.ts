@@ -1,15 +1,19 @@
 import type { Address } from 'viem';
 import type { GauntletClient } from '../client';
 import type { AdapterWithdrawParams } from './adapters/types';
+import type { SyncWithdrawQuoteBounds } from './withdrawQuote';
 import { getAdapter } from './adapters';
 import { encodeTransactionWithAttribution, PreparedTx } from '../attribution';
 import {
+  AccountMismatchError,
   AccountRequiredError,
   VaultNotFoundError,
   UnsupportedAssetError,
   InvalidSlippageBPSError,
+  InvalidWithdrawParamsError,
 } from '../errors';
 import {
+  requireAeraSyncRedeemRuntime,
   resolveAeraRuntimeContracts,
   resolveAeraTokenModeSupport,
   type AeraRuntimeContracts,
@@ -22,6 +26,7 @@ import {
   resolveSyncOnlyOperationMode,
   type OperationMode,
 } from './operationMode';
+import { ContractVersion } from './types';
 
 export type EvmWithdrawParams = {
   vaultId: string;
@@ -39,11 +44,93 @@ export type EvmWithdrawParams = {
   solverTip?: bigint;
   /** Maximum price age passed to async Aera provisioner requests. Defaults to 10 days. */
   maxPriceAge?: bigint;
+  /**
+   * Current sync quote bounds to pin instant withdraw transaction construction.
+   * Supplying bounds implies `depositMode: 'sync'`; explicit async requests are rejected.
+   */
+  syncWithdrawQuote?: SyncWithdrawQuoteBounds;
 } & (
   | { shares: bigint; amount?: never; entireAmount?: never }
   | { amount: bigint; shares?: never; entireAmount?: never }
-  | { entireAmount: true; shares?: never; amount?: never }
+  | { account?: Address; entireAmount: true; shares?: never; amount?: never }
 );
+
+function validateWithdrawParams(params: EvmWithdrawParams) {
+  const modes = [
+    'amount' in params && params.amount != null,
+    'shares' in params && params.shares != null,
+    'entireAmount' in params && params.entireAmount === true,
+  ].filter(Boolean).length;
+
+  if (modes !== 1) throw new InvalidWithdrawParamsError();
+}
+
+function sameAddress(left: Address, right: Address): boolean {
+  return left.toLowerCase() === right.toLowerCase();
+}
+
+function validateSyncWithdrawQuote({
+  params,
+  account,
+  chainId,
+  slippageBps,
+  tokenAddress,
+}: {
+  params: EvmWithdrawParams;
+  account: Address;
+  chainId: number;
+  slippageBps: number;
+  tokenAddress: Address;
+}) {
+  const quote = params.syncWithdrawQuote;
+  if (quote === undefined) return;
+
+  const { context } = quote;
+  if (
+    context.vaultId !== params.vaultId ||
+    context.chainId !== chainId ||
+    !sameAddress(context.tokenAddress, tokenAddress) ||
+    context.slippageBps !== slippageBps
+  ) {
+    throw new InvalidWithdrawParamsError();
+  }
+
+  if (context.account !== undefined && !sameAddress(context.account, account)) {
+    throw new InvalidWithdrawParamsError();
+  }
+
+  switch (context.request.mode) {
+    case 'amount':
+      if (
+        quote.kind !== 'withdraw' ||
+        !('amount' in params && params.amount != null) ||
+        context.request.amount !== params.amount ||
+        quote.tokensOut !== params.amount
+      ) {
+        throw new InvalidWithdrawParamsError();
+      }
+      return;
+    case 'shares':
+      if (
+        quote.kind !== 'redeem' ||
+        !('shares' in params && params.shares != null) ||
+        context.request.shares !== params.shares ||
+        quote.shares !== params.shares
+      ) {
+        throw new InvalidWithdrawParamsError();
+      }
+      return;
+    case 'entireAmount':
+      if (
+        quote.kind !== 'redeem' ||
+        !('entireAmount' in params && params.entireAmount) ||
+        !sameAddress(context.request.account, account)
+      ) {
+        throw new InvalidWithdrawParamsError();
+      }
+      return;
+  }
+}
 
 /**
  * Builds the ordered list of EVM transactions required to withdraw from a Gauntlet vault.
@@ -76,6 +163,7 @@ export type EvmWithdrawParams = {
  * const txs = await getWithdrawTx(client, {
  *   vaultId: 'baseUsdcPrime',
  *   entireAmount: true,
+ *   account: walletAddress,
  * });
  * ```
  */
@@ -83,6 +171,8 @@ export async function getWithdrawTx(
   client: GauntletClient,
   params: EvmWithdrawParams
 ): Promise<PreparedTx[]> {
+  validateWithdrawParams(params);
+
   if (
     params.slippageBps !== undefined &&
     (!Number.isInteger(params.slippageBps) ||
@@ -99,6 +189,11 @@ export async function getWithdrawTx(
 
   const account = client.wallet?.account?.address;
   if (!account) throw new AccountRequiredError();
+  if ('entireAmount' in params && params.entireAmount && params.account !== undefined) {
+    if (!sameAddress(params.account, account)) {
+      throw new AccountMismatchError(account, params.account);
+    }
+  }
 
   const { vault, protocol } = resolved;
 
@@ -114,20 +209,48 @@ export async function getWithdrawTx(
   const adapter = getAdapter(protocol);
   const publicClient = client.getPublicClient(chainId);
   const requestedWithdrawMode = parseOperationMode(params.vaultId, params.depositMode);
+  const slippageBps =
+    params.slippageBps ?? params.syncWithdrawQuote?.context.slippageBps ?? DEFAULT_BPS;
   let modifiedDepositMode: OperationMode;
   let aeraRuntime: AeraRuntimeContracts | undefined;
 
+  if (params.syncWithdrawQuote !== undefined) {
+    if (protocol !== 'aera' || requestedWithdrawMode === 'async') {
+      throw new InvalidWithdrawParamsError();
+    }
+
+    validateSyncWithdrawQuote({
+      params,
+      account,
+      chainId,
+      slippageBps,
+      tokenAddress: token.address,
+    });
+  }
+
   if (protocol === 'aera') {
     aeraRuntime = await resolveAeraRuntimeContracts(publicClient, vault);
+    if (
+      aeraRuntime.provisioner.version === ContractVersion.V2 &&
+      (requestedWithdrawMode === 'sync' || params.syncWithdrawQuote !== undefined)
+    ) {
+      requireAeraSyncRedeemRuntime(aeraRuntime);
+    }
     const tokenModeSupport = await resolveAeraTokenModeSupport(
       publicClient,
       aeraRuntime,
-      token.address
+      token.address,
+      { includeSyncModes: requestedWithdrawMode !== 'async' }
     );
-    modifiedDepositMode = resolveOperationMode(params.vaultId, requestedWithdrawMode, {
-      async: tokenModeSupport.asyncRedeem,
-      sync: tokenModeSupport.syncRedeem,
-    });
+    modifiedDepositMode = resolveOperationMode(
+      params.vaultId,
+      params.syncWithdrawQuote !== undefined ? 'sync' : requestedWithdrawMode,
+      {
+        async: tokenModeSupport.asyncRedeem,
+        sync: tokenModeSupport.syncRedeem,
+      }
+    );
+    if (modifiedDepositMode === 'sync') requireAeraSyncRedeemRuntime(aeraRuntime);
   } else {
     modifiedDepositMode = resolveSyncOnlyOperationMode(params.vaultId, requestedWithdrawMode);
   }
@@ -139,10 +262,11 @@ export async function getWithdrawTx(
     async: modifiedDepositMode === 'async',
     asset: token,
     publicClient,
-    slippageBps: params.slippageBps ?? DEFAULT_BPS,
+    slippageBps,
     solverTip: params.solverTip,
     maxPriceAge: params.maxPriceAge,
     aeraRuntime,
+    syncWithdrawQuote: params.syncWithdrawQuote,
     ...('shares' in params && params.shares != null ? { shares: params.shares } : {}),
     ...('amount' in params && params.amount != null ? { amount: params.amount } : {}),
     ...('entireAmount' in params && params.entireAmount ? { entireAmount: true as const } : {}),

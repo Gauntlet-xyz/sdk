@@ -15,6 +15,7 @@ import { provisionerAbi } from './abis/provisioner';
 import { provisionerV2Abi } from './abis/provisionerV2';
 import { MAX_BPS } from '../constants';
 import { ContractVersion, type EvmVaultDeployment } from './types';
+import { readAtBlock } from './aeraContracts/readOptions';
 
 const contractVersionCache = new Map<string, ContractVersion>();
 
@@ -24,6 +25,19 @@ const contractVersionAbi = [
     inputs: [],
     name: 'version',
     outputs: [{ name: '', internalType: 'string', type: 'string' }],
+    stateMutability: 'view',
+  },
+] as const;
+
+const solvingGateAbi = [
+  {
+    type: 'function',
+    inputs: [
+      { name: 'provisioner', internalType: 'address', type: 'address' },
+      { name: 'token', internalType: 'address', type: 'address' },
+    ],
+    name: 'paused',
+    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
     stateMutability: 'view',
   },
 ] as const;
@@ -45,6 +59,19 @@ export interface AeraTokenModeSupport {
   syncDeposit: boolean;
   syncRedeem: boolean;
 }
+
+export function requireAeraSyncRedeemRuntime(runtime: AeraRuntimeContracts): void {
+  if (runtime.provisioner.version !== ContractVersion.V2) {
+    throw new UnsupportedFeatureError('Aera: sync redeem requires a V2 provisioner');
+  }
+  if (runtime.feeCalculator.version !== ContractVersion.V2) {
+    throw new UnsupportedFeatureError('Aera: sync redeem requires a V2 price and fee calculator');
+  }
+}
+
+export type AeraReadOptions = {
+  blockNumber?: bigint;
+};
 
 export function applySlippageDown(amount: bigint, slippageBps: number): bigint {
   return (amount * (MAX_BPS - BigInt(slippageBps))) / MAX_BPS;
@@ -97,7 +124,8 @@ export function getMultiDepositorVault<T extends Client>(
 
 export async function resolveContractVersion(
   client: PublicClient,
-  address: Address
+  address: Address,
+  options: AeraReadOptions = {}
 ): Promise<ContractVersion> {
   const cacheKey = contractVersionCacheKey(client, address);
   const cached = contractVersionCache.get(cacheKey);
@@ -108,6 +136,7 @@ export async function resolveContractVersion(
       address,
       abi: contractVersionAbi,
       functionName: 'version',
+      ...readAtBlock(options),
     });
     const version = versionString.startsWith('2.') ? ContractVersion.V2 : ContractVersion.V1;
     contractVersionCache.set(cacheKey, version);
@@ -123,7 +152,8 @@ export async function resolveContractVersion(
 
 export async function resolveAeraRuntimeContracts(
   client: PublicClient,
-  vault: EvmVaultDeployment
+  vault: EvmVaultDeployment,
+  options: AeraReadOptions = {}
 ): Promise<AeraRuntimeContracts> {
   if (vault.vaultType !== 'multi-depositor') {
     throw new UnimplementedFeatureError('Aera: single depositor vaults');
@@ -134,11 +164,13 @@ export async function resolveAeraRuntimeContracts(
       address: vault.vaultAddress,
       abi: multiDepositorVaultAbi,
       functionName: 'provisioner',
+      ...readAtBlock(options),
     }),
     client.readContract({
       address: vault.vaultAddress,
       abi: multiDepositorVaultAbi,
       functionName: 'feeCalculator',
+      ...readAtBlock(options),
     }),
   ]);
 
@@ -150,8 +182,8 @@ export async function resolveAeraRuntimeContracts(
   }
 
   const [provisionerVersion, feeCalculatorVersion] = await Promise.all([
-    resolveContractVersion(client, provisionerAddress),
-    resolveContractVersion(client, feeCalculatorAddress),
+    resolveContractVersion(client, provisionerAddress, options),
+    resolveContractVersion(client, feeCalculatorAddress, options),
   ]);
 
   return {
@@ -169,21 +201,61 @@ export async function resolveAeraRuntimeContracts(
 export async function resolveAeraTokenModeSupport(
   client: PublicClient,
   runtime: AeraRuntimeContracts,
-  token: Address
+  token: Address,
+  options: AeraReadOptions & { includeSyncModes?: boolean } = {}
 ): Promise<AeraTokenModeSupport> {
   if (runtime.provisioner.version === ContractVersion.V2) {
-    const tokenDetails = await client.readContract({
+    const tokenDetailsPromise = client.readContract({
       address: runtime.provisioner.address,
       abi: provisionerV2Abi,
       functionName: 'tokensDetails',
       args: [token],
+      ...readAtBlock(options),
     });
+    if (options.includeSyncModes === false) {
+      const tokenDetails = await tokenDetailsPromise;
+      return {
+        asyncDeposit: Boolean(tokenDetails[0]),
+        asyncRedeem: Boolean(tokenDetails[1]),
+        syncDeposit: false,
+        syncRedeem: false,
+      };
+    }
+
+    const [tokenDetails, solvingGateEnabled, solvingGate] = await Promise.all([
+      tokenDetailsPromise,
+      client.readContract({
+        address: runtime.provisioner.address,
+        abi: provisionerV2Abi,
+        functionName: 'SOLVING_GATE_ENABLED',
+        ...readAtBlock(options),
+      }),
+      client.readContract({
+        address: runtime.provisioner.address,
+        abi: provisionerV2Abi,
+        functionName: 'solvingGate',
+        ...readAtBlock(options),
+      }),
+    ]);
+    const solvingPaused =
+      solvingGateEnabled && solvingGate !== zeroAddress
+        ? await client.readContract({
+            address: solvingGate,
+            abi: solvingGateAbi,
+            functionName: 'paused',
+            args: [runtime.provisioner.address, token],
+            ...readAtBlock(options),
+          })
+        : false;
 
     return {
       asyncDeposit: Boolean(tokenDetails[0]),
       asyncRedeem: Boolean(tokenDetails[1]),
-      syncDeposit: Boolean(tokenDetails[2]),
-      syncRedeem: Boolean(tokenDetails[3]),
+      syncDeposit: Boolean(tokenDetails[2]) && !solvingPaused,
+      syncRedeem:
+        Boolean(tokenDetails[3]) &&
+        !solvingPaused &&
+        runtime.feeCalculator.version === ContractVersion.V2,
     };
   }
 
@@ -192,6 +264,7 @@ export async function resolveAeraTokenModeSupport(
     abi: provisionerAbi,
     functionName: 'tokensDetails',
     args: [token],
+    ...readAtBlock(options),
   });
 
   return {

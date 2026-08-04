@@ -53,7 +53,7 @@ export class UnsupportedDepositModeError extends GauntletSDKError {
   readonly available: string;
 
   constructor(vaultId: string, requested: string, available: string) {
-    super(`Vault "${vaultId}" does not support ${requested} deposits (available: ${available})`);
+    super(`Vault "${vaultId}" does not support ${requested} operations (available: ${available})`);
     this.name = 'UnsupportedDepositModeError';
     this.vaultId = vaultId;
     this.requested = requested;
@@ -73,8 +73,22 @@ export class RpcNotConfiguredError extends GauntletSDKError {
 
 export class AccountRequiredError extends GauntletSDKError {
   constructor() {
-    super('No account specified. Provide a wallet in the client config.');
+    super(
+      'No account specified. Pass the required account, or configure a wallet when building transactions.'
+    );
     this.name = 'AccountRequiredError';
+  }
+}
+
+export class AccountMismatchError extends GauntletSDKError {
+  readonly expected: string;
+  readonly received: string;
+
+  constructor(expected: string, received: string) {
+    super(`Account mismatch: expected "${expected}", received "${received}"`);
+    this.name = 'AccountMismatchError';
+    this.expected = expected;
+    this.received = received;
   }
 }
 
@@ -93,6 +107,22 @@ export class InvalidWithdrawParamsError extends GauntletSDKError {
     super('Withdraw requires exactly one of: shares, amount, or all');
     this.name = 'InvalidWithdrawParamsError';
   }
+}
+
+export type SyncWithdrawBound = 'tokensOut' | 'minTokensOut' | 'unitsIn' | 'maxUnitsIn';
+
+export class InvalidSyncWithdrawBoundError extends GauntletSDKError {
+  readonly bound: SyncWithdrawBound;
+
+  constructor(bound: SyncWithdrawBound) {
+    super(`Sync withdraw cannot submit zero ${bound}; increase the amount or reduce slippage`);
+    this.name = 'InvalidSyncWithdrawBoundError';
+    this.bound = bound;
+  }
+}
+
+export function requireNonZeroSyncWithdrawBound(value: bigint, bound: SyncWithdrawBound) {
+  if (value === 0n) throw new InvalidSyncWithdrawBoundError(bound);
 }
 
 export class UnimplementedFeatureError extends GauntletSDKError {

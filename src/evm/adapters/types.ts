@@ -1,5 +1,6 @@
 import type { Abi, Address, Hex, PublicClient } from 'viem';
 import type { AeraRuntimeContracts } from '../aeraContracts';
+import type { SyncWithdrawQuoteBounds } from '../withdrawQuote';
 import type { TokenInfo, VaultDeployment } from '../types';
 
 export interface EvmTxStep<TAbi extends Abi = Abi, TFunctionName extends string = string> {
@@ -53,6 +54,7 @@ export type AdapterWithdrawParams = {
   /** Maximum price age passed to async Aera provisioner requests. Defaults to 10 days. */
   maxPriceAge?: bigint;
   aeraRuntime?: AeraRuntimeContracts;
+  syncWithdrawQuote?: SyncWithdrawQuoteBounds;
 } & (
   | { shares: bigint; amount?: never; entireAmount?: never }
   | { amount: bigint; shares?: never; entireAmount?: never }

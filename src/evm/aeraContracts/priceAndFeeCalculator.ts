@@ -3,6 +3,7 @@ import { UnsupportedFeatureError } from '../../errors';
 import { priceAndFeeCalculatorAbi } from '../abis/priceAndFeeCalculator';
 import { priceAndFeeCalculatorV2Abi } from '../abis/priceAndFeeCalculatorV2';
 import { ContractVersion } from '../types';
+import { readAtBlock } from './readOptions';
 
 const ROUNDING_FLOOR = 0;
 const ROUNDING_CEIL = 1;
@@ -12,6 +13,10 @@ export interface NormalizedVaultPriceState {
   unitPrice: bigint;
   timestamp: number;
 }
+
+type AeraPriceReadOptions = {
+  blockNumber?: bigint;
+};
 
 function toNumber(value: bigint | number): number {
   return typeof value === 'bigint' ? Number(value) : value;
@@ -54,7 +59,8 @@ export async function convertTokenToUnitsIfActive(
   vault: Address,
   token: Address,
   tokenAmount: bigint,
-  rounding: typeof ROUNDING_FLOOR | typeof ROUNDING_CEIL
+  rounding: typeof ROUNDING_FLOOR | typeof ROUNDING_CEIL,
+  options: AeraPriceReadOptions = {}
 ): Promise<bigint> {
   if (feeCalculatorVersion === ContractVersion.V2) {
     return client.readContract({
@@ -62,6 +68,7 @@ export async function convertTokenToUnitsIfActive(
       abi: priceAndFeeCalculatorV2Abi,
       functionName: 'convertTokenToUnitsIfActive',
       args: [vault, token, tokenAmount, rounding],
+      ...readAtBlock(options),
     });
   }
 
@@ -70,6 +77,7 @@ export async function convertTokenToUnitsIfActive(
     abi: priceAndFeeCalculatorAbi,
     functionName: 'convertTokenToUnitsIfActive',
     args: [vault, token, tokenAmount, rounding],
+    ...readAtBlock(options),
   });
 }
 
@@ -80,7 +88,8 @@ export async function convertUnitsToTokenIfActive(
   vault: Address,
   token: Address,
   unitsAmount: bigint,
-  rounding: typeof ROUNDING_FLOOR | typeof ROUNDING_CEIL
+  rounding: typeof ROUNDING_FLOOR | typeof ROUNDING_CEIL,
+  options: AeraPriceReadOptions = {}
 ): Promise<bigint> {
   if (feeCalculatorVersion === ContractVersion.V2) {
     return client.readContract({
@@ -88,6 +97,7 @@ export async function convertUnitsToTokenIfActive(
       abi: priceAndFeeCalculatorV2Abi,
       functionName: 'convertUnitsToTokenIfActive',
       args: [vault, token, unitsAmount, rounding],
+      ...readAtBlock(options),
     });
   }
 
@@ -96,6 +106,7 @@ export async function convertUnitsToTokenIfActive(
     abi: priceAndFeeCalculatorAbi,
     functionName: 'convertUnitsToTokenIfActive',
     args: [vault, token, unitsAmount, rounding],
+    ...readAtBlock(options),
   });
 }
 
@@ -105,7 +116,8 @@ export async function convertTokenToUnits(
   feeCalculatorVersion: ContractVersion,
   vault: Address,
   token: Address,
-  tokenAmount: bigint
+  tokenAmount: bigint,
+  options: AeraPriceReadOptions = {}
 ): Promise<bigint> {
   if (feeCalculatorVersion === ContractVersion.V2) {
     return client.readContract({
@@ -113,6 +125,7 @@ export async function convertTokenToUnits(
       abi: priceAndFeeCalculatorV2Abi,
       functionName: 'convertTokenToUnits',
       args: [vault, token, tokenAmount],
+      ...readAtBlock(options),
     });
   }
 
@@ -121,6 +134,7 @@ export async function convertTokenToUnits(
     abi: priceAndFeeCalculatorAbi,
     functionName: 'convertTokenToUnits',
     args: [vault, token, tokenAmount],
+    ...readAtBlock(options),
   });
 }
 
@@ -130,7 +144,8 @@ export async function convertUnitsToToken(
   feeCalculatorVersion: ContractVersion,
   vault: Address,
   token: Address,
-  unitsAmount: bigint
+  unitsAmount: bigint,
+  options: AeraPriceReadOptions = {}
 ): Promise<bigint> {
   if (feeCalculatorVersion === ContractVersion.V2) {
     return client.readContract({
@@ -138,6 +153,7 @@ export async function convertUnitsToToken(
       abi: priceAndFeeCalculatorV2Abi,
       functionName: 'convertUnitsToToken',
       args: [vault, token, unitsAmount],
+      ...readAtBlock(options),
     });
   }
 
@@ -146,6 +162,55 @@ export async function convertUnitsToToken(
     abi: priceAndFeeCalculatorAbi,
     functionName: 'convertUnitsToToken',
     args: [vault, token, unitsAmount],
+    ...readAtBlock(options),
+  });
+}
+
+export async function convertTokenToNumeraire(
+  client: PublicClient,
+  feeCalculator: Address,
+  feeCalculatorVersion: ContractVersion,
+  vault: Address,
+  token: Address,
+  tokenAmount: bigint,
+  options: AeraPriceReadOptions = {}
+): Promise<bigint> {
+  if (feeCalculatorVersion !== ContractVersion.V2) {
+    throw new UnsupportedFeatureError(
+      'Aera: numeraire conversion requires V2 price and fee calculator'
+    );
+  }
+
+  return client.readContract({
+    address: feeCalculator,
+    abi: priceAndFeeCalculatorV2Abi,
+    functionName: 'convertTokenToNumeraire',
+    args: [vault, token, tokenAmount],
+    ...readAtBlock(options),
+  });
+}
+
+export async function convertNumeraireToToken(
+  client: PublicClient,
+  feeCalculator: Address,
+  feeCalculatorVersion: ContractVersion,
+  vault: Address,
+  token: Address,
+  numeraireAmount: bigint,
+  options: AeraPriceReadOptions = {}
+): Promise<bigint> {
+  if (feeCalculatorVersion !== ContractVersion.V2) {
+    throw new UnsupportedFeatureError(
+      'Aera: numeraire conversion requires V2 price and fee calculator'
+    );
+  }
+
+  return client.readContract({
+    address: feeCalculator,
+    abi: priceAndFeeCalculatorV2Abi,
+    functionName: 'convertNumeraireToToken',
+    args: [vault, token, numeraireAmount],
+    ...readAtBlock(options),
   });
 }
 
@@ -153,7 +218,8 @@ export async function getAnchorTimestamp(
   client: PublicClient,
   feeCalculator: Address,
   feeCalculatorVersion: ContractVersion,
-  vault: Address
+  vault: Address,
+  options: AeraPriceReadOptions = {}
 ): Promise<number> {
   if (feeCalculatorVersion !== ContractVersion.V2) {
     throw new UnsupportedFeatureError('Aera: sync redeem requires V2 price and fee calculator');
@@ -164,6 +230,7 @@ export async function getAnchorTimestamp(
     abi: priceAndFeeCalculatorV2Abi,
     functionName: 'getAnchorTimestamp',
     args: [vault],
+    ...readAtBlock(options),
   });
 }
 

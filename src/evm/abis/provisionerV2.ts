@@ -3,6 +3,13 @@
 export const provisionerV2Abi = [
   {
     type: 'function',
+    inputs: [],
+    name: 'SOLVING_GATE_ENABLED',
+    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
     inputs: [
       { name: 'token', internalType: 'contract IERC20', type: 'address' },
       { name: 'tokensIn', internalType: 'uint256', type: 'uint256' },
@@ -55,6 +62,25 @@ export const provisionerV2Abi = [
   },
   {
     type: 'function',
+    inputs: [],
+    name: 'getSyncRedeemEpochState',
+    outputs: [
+      { name: 'epochTimestamp', internalType: 'uint256', type: 'uint256' },
+      { name: 'epochStartTvlNumeraire', internalType: 'uint256', type: 'uint256' },
+      { name: 'epochRedeemedNumeraire', internalType: 'uint256', type: 'uint256' },
+      { name: 'epochCapNumeraire', internalType: 'uint256', type: 'uint256' },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'user', internalType: 'address', type: 'address' }],
+    name: 'userUnitsRefundableUntil',
+    outputs: [{ name: 'unitsLockedUntil', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
     inputs: [
       { name: 'depositor', internalType: 'address', type: 'address' },
       { name: 'approved', internalType: 'bool', type: 'bool' },
@@ -62,6 +88,13 @@ export const provisionerV2Abi = [
     name: 'setDepositReceiverApproval',
     outputs: [],
     stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'solvingGate',
+    outputs: [{ name: '', internalType: 'address', type: 'address' }],
+    stateMutability: 'view',
   },
   {
     type: 'function',

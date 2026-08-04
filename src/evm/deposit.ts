@@ -113,7 +113,8 @@ export async function getDepositTx(
     const tokenModeSupport = await resolveAeraTokenModeSupport(
       publicClient,
       aeraRuntime,
-      token.address
+      token.address,
+      { includeSyncModes: requestedDepositMode !== 'async' }
     );
     modifiedDepositMode = resolveOperationMode(params.vaultId, requestedDepositMode, {
       async: tokenModeSupport.asyncDeposit,
