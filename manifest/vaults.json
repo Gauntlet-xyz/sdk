@@ -1,5 +1,5 @@
 {
-  "version": "2026-08-03",
+  "version": "2026-08-05",
   "vaults": [
     {
       "vaultId": "baseUsdcPrime",
@@ -2259,6 +2259,69 @@
               "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
               "symbol": "USDC",
               "decimals": 6
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "vaultId": "gtlooper",
+      "name": "sUSDS Looping Dev",
+      "protocol": "aera",
+      "strategy": "sUSDS Looping",
+      "deployments": [
+        {
+          "chain": "evm",
+          "chainId": 1,
+          "vaultAddress": "0x65bC393D16381b292221A664a783812A89f11DE6",
+          "vaultType": "multi-depositor",
+          "supplyToken": [
+            {
+              "address": "0xdC035D45d973E3EC169d2276DDab16f1e407384F",
+              "symbol": "USDS",
+              "decimals": 18
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "vaultId": "stgskylev",
+      "name": "sUSDS Looping Staging",
+      "protocol": "aera",
+      "strategy": "sUSDS Looping",
+      "deployments": [
+        {
+          "chain": "evm",
+          "chainId": 1,
+          "vaultAddress": "0x8BE13F43F1693F98343bD0C3DB6bE705D57221A3",
+          "vaultType": "multi-depositor",
+          "supplyToken": [
+            {
+              "address": "0xdC035D45d973E3EC169d2276DDab16f1e407384F",
+              "symbol": "USDS",
+              "decimals": 18
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "vaultId": "gtskylooping",
+      "name": "Gauntlet sUSDS Looping",
+      "protocol": "aera",
+      "strategy": "sUSDS Looping",
+      "deployments": [
+        {
+          "chain": "evm",
+          "chainId": 1,
+          "vaultAddress": "0xeA40De595f099cA04695b0Ca105499E50AF77f92",
+          "vaultType": "multi-depositor",
+          "supplyToken": [
+            {
+              "address": "0xdC035D45d973E3EC169d2276DDab16f1e407384F",
+              "symbol": "USDS",
+              "decimals": 18
             }
           ]
         }
