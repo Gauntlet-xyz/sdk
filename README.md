@@ -141,6 +141,10 @@ const vaultId = await apiVaultIdFromVaultId(client, 'gtusda');
 const { points } = await getPositionHistory(client.api, wallet, vaultId);
 ```
 
+## Fee wrapper vaults (partners)
+
+Partner fee wrapper vaults are Aera vaults deployed exclusively for one partner, so they are not in the bundled manifest. Register yours with `client.setManifest`: extend `await client.manifest` with your vault entry (deployment values provided by Gauntlet) and every SDK function then accepts its `vaultId`. See the [fee wrapper guide](https://docs.gauntlet.xyz/sdk/reference#fee-wrapper-vaults-partners) for the full example.
+
 ## Development
 
 `src/api/generated.ts` is generated from `services/gaia/api/openapi.json` — regenerate with `yarn generate:api-types` after API changes; CI fails if it drifts.
