@@ -82,6 +82,21 @@ describe('positions paging options', () => {
   });
 });
 
+describe('curated surfaces', () => {
+  it('requests featured vaults and strategies through the configured API origin', async () => {
+    const { fetch, urls } = captureFetch();
+    const api = new GauntletApi({ fetch });
+
+    await api.featuredVaults();
+    await api.strategies();
+
+    expect(urls).toEqual([
+      'https://api.gauntlet.xyz/v1/vaults/featured',
+      'https://api.gauntlet.xyz/v1/strategies',
+    ]);
+  });
+});
+
 describe('activity options', () => {
   it('forwards vaultId and includeHidden as query params', async () => {
     const { fetch, urls } = captureFetch();

@@ -578,6 +578,16 @@ export interface components {
             data: components["schemas"]["StrategyCard"][];
             meta: components["schemas"]["ListMeta"];
         };
+        /** @description Curated strategy assignment from the admin registry. */
+        StrategyRef: {
+            /**
+             * @description Strategy label id (`prime_lending`, `earn`, …) — matches
+             *     `/v1/strategies` card ids.
+             */
+            id: string;
+            /** @description Display name (`Prime Lending`). */
+            name: string;
+        };
         TimeseriesMeta: {
             /**
              * Format: int64
@@ -800,6 +810,7 @@ export interface components {
             metrics: components["schemas"]["VaultMetrics"];
             name: string;
             numeraire_token: components["schemas"]["TokenRef"];
+            strategy?: null | components["schemas"]["StrategyRef"];
             symbol: string;
             vault_id: string;
             vault_type: string;
@@ -810,10 +821,16 @@ export interface components {
         };
         /** @description Admin-curated logical grouping for a deployment-level vault row. */
         VaultGroupRef: {
+            /** @description Admin-curated deployment date (`YYYY-MM-DD`). */
+            deployment_date?: string | null;
+            /** @description Admin-curated long-form detail-page copy. */
+            description?: string | null;
             /** @description Stable internal group id from the Admin vault registry (`vlt_176`). */
             id: string;
             /** @description Whether this deployment is the group's primary representative. */
             is_primary: boolean;
+            /** @description Whether performance views should use a stable-denominated basis. */
+            is_stable: boolean;
             /** @description Unique, curator-managed public route (`stgusda`). */
             slug: string;
         };

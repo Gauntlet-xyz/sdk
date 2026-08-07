@@ -15,6 +15,10 @@ export type VaultDetailResponse = Schemas['VaultDetailResponse'];
 export type VaultTimeseriesResponse = Schemas['VaultTimeseriesResponse'];
 export type VaultTimeseriesPoint = Schemas['VaultTimeseriesPoint'];
 export type VaultMetrics = Schemas['VaultMetrics'];
+export type FeaturedVault = Schemas['FeaturedVault'];
+export type FeaturedVaultsResponse = Schemas['FeaturedVaultsResponse'];
+export type StrategyCard = Schemas['StrategyCard'];
+export type StrategyListResponse = Schemas['StrategyListResponse'];
 export type TvlResponse = Schemas['TvlResponse'];
 export type LatestPriceResponse = Schemas['LatestPriceResponse'];
 export type PriceTimeseriesResponse = Schemas['TimeseriesResponse'];
@@ -115,6 +119,16 @@ export class GauntletApi {
   /** GET /v1/vaults — all indexed vaults with live metrics (TVL, APY, unit price). */
   vaults(options: PageOptions = {}): Promise<{ data: VaultDetail[]; meta: TimeseriesMeta }> {
     return this.get('/v1/vaults', { next: options.next, limit: options.limit });
+  }
+
+  /** GET /v1/vaults/featured — admin-curated featured vault cards. */
+  featuredVaults(): Promise<FeaturedVaultsResponse> {
+    return this.get('/v1/vaults/featured');
+  }
+
+  /** GET /v1/strategies — admin-curated strategy cards. */
+  strategies(): Promise<StrategyListResponse> {
+    return this.get('/v1/strategies');
   }
 
   /** GET /v1/vaults/{vault_id} — one vault with live metrics. `vaultId` is CAIP-10. */
