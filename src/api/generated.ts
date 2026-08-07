@@ -398,8 +398,8 @@ export interface components {
             description?: string | null;
             /**
              * @description Curated display name; falls back to the registry id when the
-             *     curator hasn't named the vault yet. `vault_ids` carries the
-             *     stable identifiers.
+             *     curator hasn't named the vault yet. `vault_id` carries the
+             *     stable logical identifier.
              */
             name: string;
             /**
@@ -408,6 +408,8 @@ export interface components {
              *     decide whether to fall back to `description`.
              */
             short_description?: string | null;
+            /** @description Stable public route for the logical vault group. */
+            slug: string;
             /**
              * @description Supply (numeraire) token symbol, from the highest-TVL deployment
              *     that reports one.
@@ -421,6 +423,8 @@ export interface components {
              *     `null` when no deployment carried a usable timestamp.
              */
             updated_at?: string | null;
+            /** @description Stable logical vault id assigned by Admin. */
+            vault_id: string;
             /**
              * @description Per-deployment API vault ids (`{chainId}:{address}`, same order
              *     as `chains`) for `/v1/vaults/{vault_id}` links.
