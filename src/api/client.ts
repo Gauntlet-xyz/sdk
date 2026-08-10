@@ -12,6 +12,7 @@ export type UserPositionsTimeseriesResponse = Schemas['UserPositionsTimeseriesRe
 export type PositionTimeseriesPoint = Schemas['PositionTimeseriesPoint'];
 export type VaultDetail = Schemas['VaultDetail'];
 export type VaultDetailResponse = Schemas['VaultDetailResponse'];
+export type VaultListResponse = Schemas['VaultListResponse'];
 export type VaultTimeseriesResponse = Schemas['VaultTimeseriesResponse'];
 export type VaultTimeseriesPoint = Schemas['VaultTimeseriesPoint'];
 export type VaultMetrics = Schemas['VaultMetrics'];
@@ -119,6 +120,11 @@ export class GauntletApi {
   /** GET /v1/vaults — all indexed vaults with live metrics (TVL, APY, unit price). */
   vaults(options: PageOptions = {}): Promise<{ data: VaultDetail[]; meta: TimeseriesMeta }> {
     return this.get('/v1/vaults', { next: options.next, limit: options.limit });
+  }
+
+  /** GET /v1/vaults/slug/{slug} — all enabled deployments for one exact vault slug. */
+  vaultsBySlug(slug: string): Promise<VaultListResponse> {
+    return this.get(`/v1/vaults/slug/${encodeURIComponent(slug)}`);
   }
 
   /** GET /v1/vaults/featured — admin-curated featured vault cards. */

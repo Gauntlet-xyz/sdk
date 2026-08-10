@@ -95,6 +95,15 @@ describe('curated surfaces', () => {
       'https://api.gauntlet.xyz/v1/strategies',
     ]);
   });
+
+  it('looks up a vault by its encoded slug', async () => {
+    const { fetch, urls } = captureFetch();
+    const api = new GauntletApi({ fetch });
+
+    await api.vaultsBySlug('hidden/vault');
+
+    expect(urls).toEqual(['https://api.gauntlet.xyz/v1/vaults/slug/hidden%2Fvault']);
+  });
 });
 
 describe('activity options', () => {
