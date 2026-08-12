@@ -46,7 +46,7 @@ import {
   UnsupportedFeatureError,
 } from '../src/errors';
 import { resolveAeraRuntimeContracts, resolveContractVersion } from '../src/evm/aeraContracts';
-import { ContractVersion, type EvmVaultDeployment } from '../src/evm/types';
+import { ContractVersion, type EvmVaultDeployment, type VaultManifest } from '../src/evm/types';
 import { getMultiDepositorVault } from '@gauntletnetworks/aera-v3-ts-sdk/multiDepositorVault';
 import {
   solveRequestsVaultTxRequest,
@@ -74,9 +74,11 @@ const RECEIVER: Address = '0x00000000000000000000000000000000deadbeef';
 // NOTE: update this block number if the vault was not yet deployed at block 44_182_978
 const FORK_BLOCK = 44_182_978;
 
-// V2 vault (devusda2) — has a V2 provisioner with sync deposit + redeem support
+// V2 vault (devusda2): has a V2 provisioner with sync deposit + redeem support.
+// The bundled manifest only contains public, production vaults, so it does not
+// contain this dev vault. The V2 fork tests inject it with setManifest (see v2TestManifest).
 const V2_VAULT_ADDRESS: Address = '0x70d974963f44Bb5CeA01378E83e55cced102EE82';
-const V2_VAULT_ID = VaultId.AeraUsdAlphaDevDeux;
+const V2_VAULT_ID = 'devusda2';
 // NOTE: devusda2 deployed and V2 provisioner live as of this block
 const V2_FORK_BLOCK = 47_000_000;
 // V2 fee calculator and its authorised accountant (caller for setAnchorPrice)
@@ -119,6 +121,30 @@ function aeraDeployment(): EvmVaultDeployment {
     vaultAddress: AERA_VAULT_ADDRESS,
     vaultType: 'multi-depositor',
     supplyToken: [{ symbol: 'USDC', address: USDC_ADDRESS, decimals: 6 }],
+  };
+}
+
+// Manifest entry for the devusda2 dev vault, which the bundled manifest excludes.
+function v2TestManifest(): VaultManifest {
+  return {
+    version: 'test',
+    vaults: [
+      {
+        vaultId: V2_VAULT_ID,
+        name: 'Gauntlet USD Alpha Dev Deux',
+        protocol: 'aera',
+        strategy: 'test',
+        deployments: [
+          {
+            chain: 'evm',
+            chainId: base.id,
+            vaultAddress: V2_VAULT_ADDRESS,
+            vaultType: 'multi-depositor',
+            supplyToken: [{ symbol: 'USDC', address: USDC_ADDRESS, decimals: 6 }],
+          },
+        ],
+      },
+    ],
   };
 }
 
@@ -2267,6 +2293,7 @@ describe('aera V2 sync fork', () => {
         evmClients: { [base.id]: publicClient },
         wallet: walletClient,
       });
+      client.setManifest(v2TestManifest());
 
       // Enable sync deposit/redeem for USDC and refresh the anchor price before
       // any SDK calls that read token mode support or the stale-price guard.
@@ -2416,6 +2443,7 @@ describe('aera V2 sync fork', () => {
         evmClients: { [base.id]: publicClient },
         wallet: walletClient,
       });
+      client.setManifest(v2TestManifest());
 
       await setupV2SyncFork({ testClient });
       await testClient.impersonateAccount({ address: account.address });
@@ -2540,6 +2568,8 @@ describe('aera V2 sync fork', () => {
         evmClients: { [base.id]: publicClient },
         wallet: createWalletClient({ account: bob, chain: base, transport: http(rpcUrl) }),
       });
+      aliceClient.setManifest(v2TestManifest());
+      bobClient.setManifest(v2TestManifest());
 
       await setupV2SyncFork({ testClient });
       await testClient.impersonateAccount({ address: alice.address });
