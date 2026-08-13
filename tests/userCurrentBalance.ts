@@ -398,6 +398,7 @@ describe('getUserCurrentBalance', () => {
     expect(result).toEqual([
       {
         chain: 'base',
+        chainId: base.id,
         token: USDC_ADDRESS,
         decimals: 6,
         pendingDeposit: 100n,

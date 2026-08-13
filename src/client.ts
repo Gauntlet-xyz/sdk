@@ -20,6 +20,9 @@ export enum AttributionMode {
 
 export type ChainId = string | number;
 
+/** The static vault manifest bundled with this SDK release; the GauntletClient default. */
+export const bundledVaultManifest = bundledManifest as VaultManifest;
+
 export interface GauntletClientConfig {
   /** Gaia API key, sent as `x-api-key` on `client.api` requests. Anonymous access is rate-limited. */
   apiKey?: string;
@@ -68,7 +71,7 @@ export class GauntletClient {
   /** Typed client for the Gaia REST API (vaults, positions, activity, tvl, prices). */
   readonly api: GauntletApi;
 
-  private _manifest: VaultManifest = bundledManifest as VaultManifest;
+  private _manifest: VaultManifest = bundledVaultManifest;
 
   constructor(config: GauntletClientConfig) {
     this.apiKey = config.apiKey;

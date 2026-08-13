@@ -29,6 +29,7 @@ export type {
   VaultDetail,
   VaultDetailResponse,
   VaultMetrics,
+  VaultsOptions,
   VaultTimeseriesPoint,
   VaultTimeseriesResponse,
 } from './client';

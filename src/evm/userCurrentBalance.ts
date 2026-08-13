@@ -59,6 +59,8 @@ export interface UserCurrentBalanceParams {
 export interface UserCurrentBalance {
   /** Chain identifier, e.g. "base" */
   chain: string;
+  /** EVM chain id of the deployment, e.g. 8453 */
+  chainId: number;
   token: Address;
   decimals: number;
   /** Assets queued via async deposit, not yet earning */
@@ -221,6 +223,7 @@ async function queryDeploymentBalance(
 
   return {
     chain: CHAIN_NAMES[deployment.chainId] ?? `chain-${deployment.chainId}`,
+    chainId: deployment.chainId,
     token: token.address,
     decimals: token.decimals,
     pendingDeposit,
@@ -256,7 +259,7 @@ async function queryDeploymentBalance(
  *   vaultId: 'baseUsdcPrime',
  *   address: '0xYourWalletAddress',
  * });
- * // [{ chain: 'base', token: '0x...', decimals: 6, balance: 100_000_000n, pendingDeposit: 0n, pendingWithdraw: 0n }]
+ * // [{ chain: 'base', chainId: 8453, token: '0x...', decimals: 6, balance: 100_000_000n, pendingDeposit: 0n, pendingWithdraw: 0n }]
  * ```
  */
 export async function getUserCurrentBalance(

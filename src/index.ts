@@ -1,4 +1,4 @@
-export { GauntletClient, AttributionMode } from './client';
+export { GauntletClient, AttributionMode, bundledVaultManifest } from './client';
 export type { GauntletClientConfig } from './client';
 export { ContractVersion } from './evm/types';
 

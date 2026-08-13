@@ -63,6 +63,14 @@ export interface PositionsOptions extends PageOptions {
   includeHidden?: boolean;
 }
 
+export interface VaultsOptions extends PageOptions {
+  /**
+   * Include hidden (enabled but unlisted) vaults alongside visible ones.
+   * Disabled vaults are never listed.
+   */
+  includeHidden?: boolean;
+}
+
 export interface LatestPriceOptions {
   address: string;
   chainId: number;
@@ -118,8 +126,12 @@ export class GauntletApi {
   }
 
   /** GET /v1/vaults — all indexed vaults with live metrics (TVL, APY, unit price). */
-  vaults(options: PageOptions = {}): Promise<{ data: VaultDetail[]; meta: TimeseriesMeta }> {
-    return this.get('/v1/vaults', { next: options.next, limit: options.limit });
+  vaults(options: VaultsOptions = {}): Promise<{ data: VaultDetail[]; meta: TimeseriesMeta }> {
+    return this.get('/v1/vaults', {
+      next: options.next,
+      limit: options.limit,
+      include_hidden: options.includeHidden,
+    });
   }
 
   /** GET /v1/vaults/slug/{slug} — all enabled deployments for one exact vault slug. */
