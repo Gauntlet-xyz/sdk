@@ -13,6 +13,8 @@ export type PositionTimeseriesPoint = Schemas['PositionTimeseriesPoint'];
 export type VaultDetail = Schemas['VaultDetail'];
 export type VaultDetailResponse = Schemas['VaultDetailResponse'];
 export type VaultListResponse = Schemas['VaultListResponse'];
+export type VaultAllocations = Schemas['VaultAllocations'];
+export type VaultAllocationsResponse = Schemas['VaultAllocationsResponse'];
 export type VaultTimeseriesResponse = Schemas['VaultTimeseriesResponse'];
 export type VaultTimeseriesPoint = Schemas['VaultTimeseriesPoint'];
 export type VaultMetrics = Schemas['VaultMetrics'];
@@ -157,6 +159,11 @@ export class GauntletApi {
   /** GET /v1/vaults/{vault_id}/definition — raw indexed vault definition. */
   vaultDefinition(vaultId: string): Promise<unknown> {
     return this.get(`/v1/vaults/${encodeURIComponent(vaultId)}/definition`);
+  }
+
+  /** GET /v1/vaults/{vault_id}/allocations — current Aera allocations with source lineage. */
+  vaultAllocations(vaultId: string): Promise<VaultAllocationsResponse> {
+    return this.get(`/v1/vaults/${encodeURIComponent(vaultId)}/allocations`);
   }
 
   /** GET /v1/vaults/{vault_id}/timeseries — TVL / unit-price / APY history. */

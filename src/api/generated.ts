@@ -256,6 +256,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/vaults/{vault_id}/allocations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get current vault allocations
+         * @description Returns current allocations through a Gaia-owned, source-independent contract. Aera API is the initial source, but its metric-group schema is normalized into flat allocation values with discriminated targets. Use `/{vault_id}` or `/{vault_id}/timeseries` for vault-level metrics.
+         */
+        get: operations["get_vault_allocations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/vaults/{vault_id}/definition": {
         parameters: {
             query?: never;
@@ -340,6 +360,42 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        Allocation: {
+            /**
+             * Format: double
+             * @description Fraction of the parent vault allocated to this target (1.0 = 100%).
+             */
+            allocation?: number | null;
+            /** Format: double */
+            amount?: number | null;
+            /** Format: double */
+            amount_usd?: number | null;
+            /** @description Source-independent category used by consumers to select allocation sections. */
+            category: string;
+            target: components["schemas"]["AllocationTarget"];
+        };
+        AllocationFlow: {
+            kind: components["schemas"]["AllocationFlowKind"];
+            target_vault_address: string;
+        };
+        /** @enum {string} */
+        AllocationFlowKind: "pending_deposit" | "pending_redemption";
+        AllocationProtocol: {
+            id: string;
+            name: string;
+        };
+        AllocationTarget: {
+            address: string;
+            /** Format: int64 */
+            chain_id: number;
+            flow?: null | components["schemas"]["AllocationFlow"];
+            /** @enum {string} */
+            kind: "asset";
+            name?: string | null;
+            protocol?: null | components["schemas"]["AllocationProtocol"];
+            strategy_type: string;
+            symbol: string;
+        };
         /**
          * @description Decimal-string metric paired across native (numeraire-token) and USD.
          *     `native` is always present; `usd` is JSON null when pricing is unavailable.
@@ -825,6 +881,16 @@ export interface components {
         UserPositionsTimeseriesResponse: {
             data: components["schemas"]["PositionTimeseriesPoint"][];
             meta: components["schemas"]["TimeseriesMeta"];
+        };
+        VaultAllocations: {
+            allocations: components["schemas"]["Allocation"][];
+            /** Format: date-time */
+            as_of?: string | null;
+            vault_id: string;
+        };
+        VaultAllocationsResponse: {
+            data: components["schemas"]["VaultAllocations"];
+            meta: components["schemas"]["BasicMeta"];
         };
         VaultDetail: {
             address: string;
@@ -1373,6 +1439,74 @@ export interface operations {
             };
             /** @description Vault not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_vault_allocations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Vault identifier (CAIP-10 `chainId:address`) */
+                vault_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current vault allocations */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultAllocationsResponse"];
+                };
+            };
+            /** @description Missing or invalid auth */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Vault not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid vault identifier or non-Aera vault */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Allocation data source unavailable */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Vault metadata source unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

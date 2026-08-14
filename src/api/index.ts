@@ -28,6 +28,8 @@ export type {
   UserPositionsTimeseriesResponse,
   VaultDetail,
   VaultDetailResponse,
+  VaultAllocations,
+  VaultAllocationsResponse,
   VaultMetrics,
   VaultsOptions,
   VaultTimeseriesPoint,
