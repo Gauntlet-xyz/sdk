@@ -452,7 +452,8 @@ export interface components {
             /**
              * Format: double
              * @description Highest 7-day APY across the vault's deployments, fraction
-             *     (0.0573 = 5.73%). `null` while every window is warming up.
+             *     (0.0573 = 5.73%). `null` while every window is warming up or APY
+             *     display is disabled for this vault.
              */
             apy_7d_max?: number | null;
             /**
@@ -607,7 +608,8 @@ export interface components {
              * Format: double
              * @description Highest 7-day APY across the strategy's vaults ("APY Up To"),
              *     fraction (0.0953 = 9.53%). `null` while every vault's window is
-             *     still warming up.
+             *     still warming up. Vaults with APY display disabled do not
+             *     contribute to this aggregate.
              */
             apy_7d_max?: number | null;
             /**
