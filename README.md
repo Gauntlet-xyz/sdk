@@ -65,30 +65,45 @@ import {
   getSyncWithdrawQuote,
   getWithdrawTx,
   VaultId,
-} from '@gauntlet-xyz/sdk'
+} from '@gauntlet-xyz/sdk';
 
-const vaultId = VaultId.AeraUsdAlpha
-const support = await getAeraTokenModeSupport(client, { vaultId })
+const vaultId = VaultId.AeraUsdAlpha;
+const support = await getAeraTokenModeSupport(client, { vaultId });
 
 if (support.syncRedeem) {
   const quote = await getSyncWithdrawQuote(client, {
     vaultId,
     amount: 1_000_000n,
     slippageBps: 100,
-  })
+  });
   const steps = await getWithdrawTx(client, {
     vaultId,
     amount: 1_000_000n,
     syncWithdrawQuote: quote,
-  })
+  });
 }
 ```
+
+Use `quote.rate` for the block-consistent rate associated with the quote. To fetch only the live
+rate:
+
+```ts
+import { getSyncWithdrawRate } from '@gauntlet-xyz/sdk';
+
+const rate = await getSyncWithdrawRate(client, { vaultId });
+```
+
+`getSyncWithdrawRate` accepts the exported `SyncWithdrawRateParams` and returns the live base,
+dynamic-premium, and effective multipliers without requiring an amount or account.
 
 An `amount` quote uses exact token output and returns a `maxUnitsIn` bound. A `shares` quote uses
 exact shares and returns a `minTokensOut` bound. Full-position quotes require
 `{ entireAmount: true, account }`; the matching transaction uses the configured wallet account,
 and an optional `account` must match that wallet. The returned `SyncWithdrawQuote` is directly
-assignable to the exported `SyncWithdrawQuoteBounds` accepted by `getWithdrawTx`.
+assignable to the exported `SyncWithdrawQuoteBounds` accepted by `getWithdrawTx`. Redeem quotes
+also include `shareSafeTokensOut`, the largest exact-token withdrawal that preserves slippage
+headroom within the quoted shares. `capacity.knownLiquidityTokens` reports the vault's token
+balance only when no pull-funds calldata can source more liquidity; otherwise it is undefined.
 
 Supplying `syncWithdrawQuote` implies sync mode and validates its vault, chain, token, account,
 slippage, and sizing request. When transaction slippage is omitted, the builder uses the quote's

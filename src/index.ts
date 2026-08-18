@@ -16,7 +16,7 @@ export type { VaultFilter } from './evm/vaults';
 export { getDepositTx } from './evm/deposit';
 export { getDepositReceiverApprovalTx } from './evm/depositReceiverApproval';
 export { getWithdrawTx } from './evm/withdraw';
-export { getSyncWithdrawQuote } from './evm/withdrawQuote';
+export { getSyncWithdrawQuote, getSyncWithdrawRate } from './evm/withdrawQuote';
 export { getAeraTokenModeSupport } from './evm/tokenModes';
 export { getUserCurrentBalance } from './evm/userCurrentBalance';
 export { getVaults, VaultId } from './evm/vaults';
@@ -42,6 +42,7 @@ export type {
   SyncWithdrawQuoteContext,
   SyncWithdrawQuoteRequest,
   SyncWithdrawQuoteBounds,
+  SyncWithdrawRateParams,
 } from './evm/withdrawQuote';
 export type { AeraTokenModeSupportParams } from './evm/tokenModes';
 export type { SyncRedeemRate } from './evm/aeraContracts/v2';

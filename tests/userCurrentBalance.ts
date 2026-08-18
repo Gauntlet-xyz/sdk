@@ -76,6 +76,8 @@ function v2BalanceClient(address: Address): PublicClient {
           return FEE_CALCULATOR_ADDRESS;
         case 'convertUnitsToToken':
           return BigInt(args?.[2] as bigint) * 2n;
+        case 'userUnitsRefundableUntil':
+          return 1_234n;
         default:
           throw new Error(`Unexpected readContract call: ${functionName}`);
       }
@@ -404,6 +406,7 @@ describe('getUserCurrentBalance', () => {
         pendingDeposit: 100n,
         balance: 1_000n,
         pendingWithdraw: 600n,
+        unitsLockedUntil: 1_234n,
       },
     ]);
   });

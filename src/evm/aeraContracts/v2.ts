@@ -4,7 +4,9 @@ import {
   type GetContractReturnType,
   type PublicClient,
   getContract,
+  zeroAddress,
 } from 'viem';
+import { erc20Abi } from '../abis/erc20';
 import { priceAndFeeCalculatorV2Abi } from '../abis/priceAndFeeCalculatorV2';
 import { provisionerV2Abi } from '../abis/provisionerV2';
 import {
@@ -70,6 +72,30 @@ async function getTokenDetails(
     abi: provisionerV2Abi,
     functionName: 'tokensDetails',
     args: [token],
+    ...readAtBlock(options),
+  });
+}
+
+/**
+ * Returns the vault's currently known sync-redeem liquidity in tokens.
+ *
+ * When a pull-funds pointer is configured, the provisioner may source more tokens during the
+ * redemption, so the vault's current token balance is not a reliable liquidity limit.
+ */
+export async function getKnownSyncRedeemLiquidityTokens(
+  client: PublicClient,
+  vault: Address,
+  token: Address,
+  hasPullFundsSubmitData: boolean,
+  options: SyncRedeemReadOptions = {}
+): Promise<bigint | undefined> {
+  if (hasPullFundsSubmitData) return undefined;
+
+  return client.readContract({
+    address: token,
+    abi: erc20Abi,
+    functionName: 'balanceOf',
+    args: [vault],
     ...readAtBlock(options),
   });
 }
@@ -198,20 +224,22 @@ export interface SyncRedeemRate {
 }
 
 /**
- * Reads the live sync redeem rate, replicating the provisioner's effective-multiplier
- * derivation (base multiplier minus a price-age-proportional dynamic premium).
+ * Reads the live sync redeem rate and whether pull-funds calldata is configured.
+ *
+ * Both values come from the same token-details read, avoiding another RPC request when a quote
+ * needs to determine whether the vault balance is a reliable liquidity limit.
  *
  * @throws {StalePriceError} If the oracle price is older than the configured max age,
  *   in which case the on-chain sync redeem would revert.
  */
-export async function getSyncRedeemRate(
+export async function getSyncRedeemRateContext(
   client: PublicClient,
   provisioner: Address,
   vault: Address,
   token: Address,
   feeCalculator: Address,
   options: SyncRedeemReadOptions = {}
-): Promise<SyncRedeemRate> {
+): Promise<{ rate: SyncRedeemRate; hasPullFundsSubmitData: boolean }> {
   const readContext = await resolveReadContext(client, options);
   const [tokenDetails, syncRedeemDetails, anchorTimestamp] = await client.multicall({
     contracts: [
@@ -256,10 +284,26 @@ export async function getSyncRedeemRate(
       : ((blockTimestamp - priceTimestamp) * maxDynamicPremiumBps + maxPriceAge - 1n) / maxPriceAge;
 
   return {
-    baseMultiplierBps,
-    dynamicPremiumBps,
-    effectiveMultiplierBps: baseMultiplierBps - dynamicPremiumBps,
+    rate: {
+      baseMultiplierBps,
+      dynamicPremiumBps,
+      effectiveMultiplierBps: baseMultiplierBps - dynamicPremiumBps,
+    },
+    hasPullFundsSubmitData: tokenDetails[9] !== zeroAddress,
   };
+}
+
+/** Preserves the existing rate-only API for callers that do not need pull-funds state. */
+export async function getSyncRedeemRate(
+  client: PublicClient,
+  provisioner: Address,
+  vault: Address,
+  token: Address,
+  feeCalculator: Address,
+  options: SyncRedeemReadOptions = {}
+): Promise<SyncRedeemRate> {
+  return (await getSyncRedeemRateContext(client, provisioner, vault, token, feeCalculator, options))
+    .rate;
 }
 
 async function getSyncRedeemMultiplier(

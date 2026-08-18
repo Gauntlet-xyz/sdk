@@ -27,7 +27,7 @@ import { getDepositTx } from '../src/evm/deposit';
 import { getDepositReceiverApprovalTx } from '../src/evm/depositReceiverApproval';
 import { getWithdrawTx } from '../src/evm/withdraw';
 import type { EvmWithdrawParams } from '../src/evm/withdraw';
-import { getSyncWithdrawQuote } from '../src/evm/withdrawQuote';
+import { getSyncWithdrawQuote, getSyncWithdrawRate } from '../src/evm/withdrawQuote';
 import type {
   SyncWithdrawQuoteBounds,
   SyncWithdrawQuoteContext,
@@ -201,6 +201,7 @@ function publicClientWithV2Reads({
   solvingGateAddress = SOLVING_GATE_ADDRESS,
   solvingPaused = false,
   solvingGateReadError,
+  pullFundsSubmitDataPointer = RECEIVER,
   epochTimestamp = 0n,
   epochStartTvlNumeraire = 1_000_000n,
   epochRedeemedNumeraire = 0n,
@@ -234,6 +235,7 @@ function publicClientWithV2Reads({
   solvingGateAddress?: Address;
   solvingPaused?: boolean;
   solvingGateReadError?: Error;
+  pullFundsSubmitDataPointer?: Address;
   epochTimestamp?: bigint;
   epochStartTvlNumeraire?: bigint;
   epochRedeemedNumeraire?: bigint;
@@ -285,7 +287,7 @@ function publicClientWithV2Reads({
           syncDepositMultiplier,
           syncRedeemMultiplier,
           RECEIVER,
-          RECEIVER,
+          pullFundsSubmitDataPointer,
         ];
       case 'SOLVING_GATE_ENABLED':
         return solvingGateEnabled;
@@ -961,6 +963,27 @@ describe('aera', () => {
     expect(withdraw.tx.args[2]).toBe(123n);
   });
 
+  test('reads the instant withdraw rate without an amount or account', async () => {
+    const client = aeraV2QuoteClient(
+      publicClientWithV2Reads({
+        anchorTimestamp: 199n,
+        blockTimestamp: 200n,
+        maxPriceAge: 3n,
+        maxDynamicPremiumBps: 2n,
+      })
+    );
+
+    await expect(
+      getSyncWithdrawRate(client, {
+        vaultId: VAULT_ID,
+      })
+    ).resolves.toEqual({
+      baseMultiplierBps: 9_500n,
+      dynamicPremiumBps: 1n,
+      effectiveMultiplierBps: 9_499n,
+    });
+  });
+
   test('treats supplied sync quote bounds as a sync withdraw request', async () => {
     const client = aeraV2WalletClient(publicClientWithV2Reads());
 
@@ -1190,6 +1213,7 @@ describe('aera', () => {
         blockNumber: quoteBlockNumber,
         provisionerAddress: '0x0000000000000000000000000000000000000a01',
         feeCalculatorAddress: '0x0000000000000000000000000000000000000f01',
+        pullFundsSubmitDataPointer: zeroAddress,
         onRead: (read) => reads.push(read),
         onMulticall: (call) => multicalls.push(call),
       })
@@ -1259,6 +1283,34 @@ describe('aera', () => {
     expect(quote.rate.effectiveMultiplierBps).toBe(9_499n);
   });
 
+  test('reports a share-safe exact-withdraw bound across integer rounding', async () => {
+    const client = aeraV2QuoteClient(publicClientWithV2Reads());
+
+    const redeemQuote = await getSyncWithdrawQuote(client, {
+      vaultId: VAULT_ID,
+      shares: 103n,
+      slippageBps: 100,
+    });
+    const safeWithdrawQuote = await getSyncWithdrawQuote(client, {
+      vaultId: VAULT_ID,
+      amount: 95n,
+      slippageBps: 100,
+    });
+    const roundedUpWithdrawQuote = await getSyncWithdrawQuote(client, {
+      vaultId: VAULT_ID,
+      amount: 96n,
+      slippageBps: 100,
+    });
+
+    expect(redeemQuote).toMatchObject({
+      tokensOut: 97n,
+      minTokensOut: 96n,
+      shareSafeTokensOut: 95n,
+    });
+    expect(safeWithdrawQuote.maxUnitsIn).toBeLessThanOrEqual(103n);
+    expect(roundedUpWithdrawQuote.maxUnitsIn).toBeGreaterThan(103n);
+  });
+
   test('uses the sync redeem multiplier tuple index for quotes', async () => {
     const client = aeraV2QuoteClient(
       publicClientWithV2Reads({
@@ -1320,6 +1372,54 @@ describe('aera', () => {
         exceedsCapacity: true,
       },
     });
+  });
+
+  test('reports known sync withdraw liquidity when pulling is disabled', async () => {
+    let tokenDetailsReads = 0;
+    const client = aeraV2QuoteClient(
+      publicClientWithV2Reads({
+        balanceOf: 500n,
+        pullFundsSubmitDataPointer: zeroAddress,
+        onRead: ({ functionName }) => {
+          if (functionName === 'tokensDetails') tokenDetailsReads += 1;
+        },
+      })
+    );
+
+    const quote = await getSyncWithdrawQuote(client, {
+      vaultId: VAULT_ID,
+      amount: 600n,
+      slippageBps: 0,
+    });
+
+    expect(quote.capacity.remainingTokens).toBe(1_000_000n);
+    expect(quote.capacity.knownLiquidityTokens).toBe(500n);
+    expect(quote.capacity.exceedsCapacity).toBe(false);
+    // Mode support and the rate each read token details; liquidity reuses the rate result.
+    expect(tokenDetailsReads).toBe(2);
+  });
+
+  test('uses the epoch cap when pull-funds calldata can provide more liquidity', async () => {
+    let balanceReads = 0;
+    const client = aeraV2QuoteClient(
+      publicClientWithV2Reads({
+        balanceOf: 500n,
+        pullFundsSubmitDataPointer: RECEIVER,
+        onRead: ({ functionName }) => {
+          if (functionName === 'balanceOf') balanceReads += 1;
+        },
+      })
+    );
+
+    const quote = await getSyncWithdrawQuote(client, {
+      vaultId: VAULT_ID,
+      amount: 600n,
+      slippageBps: 0,
+    });
+
+    expect(quote.capacity.knownLiquidityTokens).toBeUndefined();
+    expect(quote.capacity.exceedsCapacity).toBe(false);
+    expect(balanceReads).toBe(0);
   });
 
   test('flags when a sync redeem exceeds remaining epoch capacity', async () => {
@@ -1422,6 +1522,28 @@ describe('aera', () => {
 
     expect(redeem.tx.type).toBe('redeem');
     expect(redeem.tx.account).toBe(privateKeyToAccount(TEST_PRIVATE_KEY).address);
+  });
+
+  test('builds a full-balance transaction from a matching entire-amount quote', async () => {
+    const walletAccount = privateKeyToAccount(TEST_PRIVATE_KEY).address;
+    const client = aeraV2WalletClient(publicClientWithV2Reads({ balanceOf: 1_000n }));
+    const quote = await getSyncWithdrawQuote(client, {
+      vaultId: VAULT_ID,
+      account: walletAccount,
+      entireAmount: true,
+      slippageBps: 0,
+    });
+
+    const [redeem] = await getWithdrawTx(client, {
+      vaultId: VAULT_ID,
+      entireAmount: true,
+      syncWithdrawQuote: quote,
+    });
+
+    expect(quote.context.request).toEqual({ mode: 'entireAmount', account: walletAccount });
+    expect(redeem.tx.type).toBe('redeem');
+    expect(redeem.tx.args[1]).toBe(quote.shares);
+    expect(redeem.tx.args[2]).toBe(quote.minTokensOut);
   });
 
   test('rejects stale full-balance sync quote shares', async () => {
@@ -2485,6 +2607,19 @@ describe('aera V2 sync fork', () => {
       // ── Sync Withdraw by exact token amount ───────────────────────────────────
 
       const WITHDRAW_AMOUNT = V2_DEPOSIT_AMOUNT / 2n;
+      const quote = await getSyncWithdrawQuote(client, {
+        vaultId: V2_VAULT_ID,
+        amount: WITHDRAW_AMOUNT,
+        account: account.address,
+        slippageBps: 100,
+      });
+      const vaultLiquidity = await publicClient.readContract({
+        address: USDC_ADDRESS,
+        abi: erc20Abi,
+        functionName: 'balanceOf',
+        args: [V2_VAULT_ADDRESS],
+      });
+      expect(quote.capacity.knownLiquidityTokens).toBe(vaultLiquidity);
 
       const withdrawQuote = await getSyncWithdrawQuote(client, {
         vaultId: V2_VAULT_ID,

@@ -1,7 +1,7 @@
 export { getDepositTx } from './deposit';
 export { getDepositReceiverApprovalTx } from './depositReceiverApproval';
 export { getWithdrawTx } from './withdraw';
-export { getSyncWithdrawQuote } from './withdrawQuote';
+export { getSyncWithdrawQuote, getSyncWithdrawRate } from './withdrawQuote';
 export { getAeraTokenModeSupport } from './tokenModes';
 export { getUserCurrentBalance } from './userCurrentBalance';
 export { getVaults, VaultId } from './vaults';
@@ -46,6 +46,7 @@ export type {
   SyncWithdrawQuoteContext,
   SyncWithdrawQuoteRequest,
   SyncWithdrawQuoteBounds,
+  SyncWithdrawRateParams,
 } from './withdrawQuote';
 export type { AeraTokenModeSupportParams } from './tokenModes';
 export type { SyncRedeemRate } from './aeraContracts/v2';

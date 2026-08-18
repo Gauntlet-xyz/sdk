@@ -24,8 +24,10 @@ import {
   convertTokenToNumeraire,
 } from './aeraContracts/priceAndFeeCalculator';
 import {
+  getKnownSyncRedeemLiquidityTokens,
   getSyncRedeemEpochState,
   getSyncRedeemRate,
+  getSyncRedeemRateContext,
   getSyncRedeemTokenOut,
   getSyncWithdrawUnitsIn,
   getUserUnitsRefundableUntil,
@@ -33,7 +35,7 @@ import {
 } from './aeraContracts/v2';
 import { resolveOperationMode } from './operationMode';
 
-/** Epoch capacity accounting for the global sync redeem cap. */
+/** Epoch-cap accounting plus any liquid-token balance known to the caller. */
 export interface SyncWithdrawCapacity {
   /** Effective epoch cap (min of relative and absolute), in numeraire. */
   epochCapNumeraire: bigint;
@@ -43,6 +45,8 @@ export interface SyncWithdrawCapacity {
   remainingNumeraire: bigint;
   /** Remaining capacity expressed in the withdraw token. */
   remainingTokens: bigint;
+  /** Vault token balance when no pull-funds calldata is configured; otherwise unknown. */
+  knownLiquidityTokens?: bigint;
   /** This redemption's size in numeraire (matches the on-chain epoch accounting). */
   requestNumeraire: bigint;
   /** True when this redemption alone exceeds remaining epoch capacity (the tx would revert). */
@@ -77,6 +81,8 @@ interface SyncWithdrawQuoteDetails {
   tokensOut: bigint;
   /** Lower bound on tokens received after slippage (equals `tokensOut` for `'withdraw'`). */
   minTokensOut: bigint;
+  /** Largest exact-token withdrawal that fits `shares`; only set for `'redeem'` quotes. */
+  shareSafeTokensOut?: bigint;
   /** Live multiplier breakdown (base, dynamic premium, effective), in bps. */
   rate: SyncRedeemRate;
   capacity: SyncWithdrawCapacity;
@@ -112,12 +118,15 @@ export type SyncWithdrawQuote =
   | (SyncWithdrawQuoteDetails & { kind: 'redeem' })
   | (SyncWithdrawQuoteDetails & { kind: 'withdraw' });
 
-type SyncWithdrawQuoteBaseParams = {
+export type SyncWithdrawRateParams = {
   vaultId: string;
   /** EVM chain ID. Defaults to the vault's primary chain (Base for current multichain vaults). */
   chainId?: number;
   /** Required for multiasset vaults. */
   assetSymbol?: string;
+};
+
+type SyncWithdrawQuoteBaseParams = SyncWithdrawRateParams & {
   /** Optional for explicit amount/shares quotes; required for full-position quotes. */
   account?: Address;
   /**
@@ -150,13 +159,91 @@ function validateSyncWithdrawQuoteParams(params: SyncWithdrawQuoteParams) {
   }
 }
 
+async function resolveSyncWithdrawContext(
+  client: GauntletClient,
+  params: SyncWithdrawRateParams,
+  readKind: 'quote' | 'rate'
+) {
+  const resolved = await resolveVault(client, params.vaultId, params.chainId);
+  if (!resolved) throw new VaultNotFoundError(params.vaultId);
+
+  const { vault, protocol } = resolved;
+  if (protocol !== 'aera') {
+    throw new UnsupportedFeatureError(
+      readKind === 'quote'
+        ? 'Sync withdraw quote is only available for Aera vaults'
+        : 'Sync withdraw rate is only available for Aera vaults'
+    );
+  }
+
+  const chainId = params.chainId ?? vault.chainId;
+  const publicClient = client.getPublicClient(chainId);
+  const token =
+    vault.supplyToken.length > 1
+      ? vault.supplyToken.find((tInfo) => tInfo.symbol === params.assetSymbol)
+      : vault.supplyToken[0];
+  if (token === undefined) {
+    throw new UnsupportedAssetError(params.assetSymbol ?? 'unknown', params.vaultId);
+  }
+
+  const quoteBlock = await publicClient.getBlock();
+  if (quoteBlock.number === null) {
+    throw new UnsupportedFeatureError(
+      readKind === 'quote'
+        ? 'Aera: sync withdraw quote requires a numbered block'
+        : 'Aera: sync withdraw rate requires a numbered block'
+    );
+  }
+  const readContext = {
+    blockNumber: quoteBlock.number,
+    blockTimestamp: BigInt(quoteBlock.timestamp),
+  };
+
+  const runtime = await resolveAeraRuntimeContracts(publicClient, vault, readContext);
+  requireAeraSyncRedeemRuntime(runtime);
+
+  const support = await resolveAeraTokenModeSupport(
+    publicClient,
+    runtime,
+    token.address,
+    readContext
+  );
+  resolveOperationMode(params.vaultId, 'sync', {
+    async: support.asyncRedeem,
+    sync: support.syncRedeem,
+  });
+
+  return { publicClient, vault, token, runtime, chainId, readContext };
+}
+
+/** Reads the live instant-withdraw fee rate without requiring a withdrawal amount or account. */
+export async function getSyncWithdrawRate(
+  client: GauntletClient,
+  params: SyncWithdrawRateParams
+): Promise<SyncRedeemRate> {
+  const { publicClient, vault, token, runtime, readContext } = await resolveSyncWithdrawContext(
+    client,
+    params,
+    'rate'
+  );
+
+  return getSyncRedeemRate(
+    publicClient,
+    runtime.provisioner.address,
+    vault.vaultAddress,
+    token.address,
+    runtime.feeCalculator.address,
+    readContext
+  );
+}
+
 /**
  * Builds a live quote for an instant (sync) withdraw without sending a transaction.
  *
  * Surfaces everything the on-chain `redeem`/`withdraw` would apply or check but that a plain
  * transaction build does not pre-validate: the effective rate (including the price-age dynamic
- * premium), slippage bounds, the global per-epoch redeem capacity, and whether the caller's units
- * are still locked from a recent sync deposit.
+ * premium), slippage bounds, the global per-epoch redeem capacity, any known vault-balance limit,
+ * and whether the caller's units are still locked from a recent sync deposit.
  *
  * @throws {VaultNotFoundError} If the vault ID is not found.
  * @throws {UnsupportedAssetError} If the asset symbol is not accepted by the vault.
@@ -180,54 +267,21 @@ export async function getSyncWithdrawQuote(
   }
   const slippageBps = params.slippageBps ?? DEFAULT_BPS;
 
-  const resolved = await resolveVault(client, params.vaultId, params.chainId);
-  if (!resolved) throw new VaultNotFoundError(params.vaultId);
-
-  const { vault, protocol } = resolved;
-  if (protocol !== 'aera') {
-    throw new UnsupportedFeatureError('Sync withdraw quote is only available for Aera vaults');
-  }
-
-  const chainId = params.chainId ?? vault.chainId;
-  const publicClient = client.getPublicClient(chainId);
-
-  const token =
-    vault.supplyToken.length > 1
-      ? vault.supplyToken.find((tInfo) => tInfo.symbol === params.assetSymbol)
-      : vault.supplyToken[0];
-  if (token === undefined) {
-    throw new UnsupportedAssetError(params.assetSymbol ?? 'unknown', params.vaultId);
-  }
-
-  const quoteBlock = await publicClient.getBlock();
-  if (quoteBlock.number === null) {
-    throw new UnsupportedFeatureError('Aera: sync withdraw quote requires a numbered block');
-  }
-  const quoteReadContext = {
-    blockNumber: quoteBlock.number,
-    blockTimestamp: BigInt(quoteBlock.timestamp),
-  };
-
-  const runtime = await resolveAeraRuntimeContracts(publicClient, vault, quoteReadContext);
-  requireAeraSyncRedeemRuntime(runtime);
-
-  const support = await resolveAeraTokenModeSupport(
+  const {
     publicClient,
+    vault,
+    token,
     runtime,
-    token.address,
-    quoteReadContext
-  );
-  resolveOperationMode(params.vaultId, 'sync', {
-    async: support.asyncRedeem,
-    sync: support.syncRedeem,
-  });
+    chainId,
+    readContext: quoteReadContext,
+  } = await resolveSyncWithdrawContext(client, params, 'quote');
 
   const provisioner = runtime.provisioner.address;
   const feeCalculator = runtime.feeCalculator.address;
   const feeVersion = runtime.feeCalculator.version;
   const vaultAddress = vault.vaultAddress;
 
-  const rate = await getSyncRedeemRate(
+  const { rate, hasPullFundsSubmitData } = await getSyncRedeemRateContext(
     publicClient,
     provisioner,
     vaultAddress,
@@ -242,6 +296,7 @@ export async function getSyncWithdrawQuote(
   let minTokensOut: bigint;
   let maxUnitsIn: bigint;
   let request: SyncWithdrawQuoteRequest;
+  let shareSafeTokensOut: bigint | undefined;
 
   if ('amount' in params && params.amount != null) {
     // Exact token out: shares burned is the estimate, bounded above by slippage.
@@ -283,23 +338,34 @@ export async function getSyncWithdrawQuote(
       throw new InvalidWithdrawParamsError();
     }
     requireNonZeroSyncWithdrawBound(shares, 'unitsIn');
-    tokensOut = await getSyncRedeemTokenOut(
-      publicClient,
-      provisioner,
-      feeCalculator,
-      feeVersion,
-      vaultAddress,
-      token.address,
-      shares,
-      rate.effectiveMultiplierBps,
-      quoteReadContext
-    );
+    const getTokensOut = (unitsIn: bigint) =>
+      getSyncRedeemTokenOut(
+        publicClient,
+        provisioner,
+        feeCalculator,
+        feeVersion,
+        vaultAddress,
+        token.address,
+        unitsIn,
+        rate.effectiveMultiplierBps,
+        quoteReadContext
+      );
+    // A capacity-limited Max is submitted as an exact-token withdraw. Reserve slippage headroom so
+    // its maximum share cost cannot exceed the user's share balance.
+    const shareSafeUnitsIn = (shares * MAX_BPS) / (MAX_BPS + BigInt(slippageBps));
+    const tokensOutPromise = getTokensOut(shares);
+    const shareSafeTokensOutPromise =
+      shareSafeUnitsIn === shares ? tokensOutPromise : getTokensOut(shareSafeUnitsIn);
+    [tokensOut, shareSafeTokensOut] = await Promise.all([
+      tokensOutPromise,
+      shareSafeTokensOutPromise,
+    ]);
     minTokensOut = applySlippageDown(tokensOut, slippageBps);
     requireNonZeroSyncWithdrawBound(minTokensOut, 'minTokensOut');
     maxUnitsIn = shares;
   }
 
-  const [epoch, requestNumeraire, unitsLockedUntil] = await Promise.all([
+  const [epoch, requestNumeraire, unitsLockedUntil, knownLiquidityTokens] = await Promise.all([
     getSyncRedeemEpochState(publicClient, provisioner, quoteReadContext),
     convertTokenToNumeraire(
       publicClient,
@@ -313,6 +379,13 @@ export async function getSyncWithdrawQuote(
     params.account
       ? getUserUnitsRefundableUntil(publicClient, provisioner, params.account, quoteReadContext)
       : Promise.resolve(undefined),
+    getKnownSyncRedeemLiquidityTokens(
+      publicClient,
+      vaultAddress,
+      token.address,
+      hasPullFundsSubmitData,
+      quoteReadContext
+    ),
   ]);
 
   const remainingNumeraire =
@@ -328,18 +401,19 @@ export async function getSyncWithdrawQuote(
     remainingNumeraire,
     quoteReadContext
   );
-
   const quoteDetails: SyncWithdrawQuoteDetails = {
     shares,
     maxUnitsIn,
     tokensOut,
     minTokensOut,
+    shareSafeTokensOut,
     rate,
     capacity: {
       epochCapNumeraire: epoch.epochCapNumeraire,
       epochRedeemedNumeraire: epoch.epochRedeemedNumeraire,
       remainingNumeraire,
       remainingTokens,
+      knownLiquidityTokens,
       requestNumeraire,
       exceedsCapacity: requestNumeraire > remainingNumeraire,
     },

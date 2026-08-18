@@ -4,6 +4,7 @@ import type { EvmVaultDeployment } from './types';
 import { ChainMismatchError, UnsupportedProtocolError, VaultNotFoundError } from '../errors';
 import { getMultiDepositorVault, resolveAeraRuntimeContracts } from './aeraContracts';
 import { convertUnitsToToken } from './aeraContracts/priceAndFeeCalculator';
+import { getUserUnitsRefundableUntil } from './aeraContracts/v2';
 import { provisionerV2Abi } from './abis/provisionerV2';
 import { ContractVersion } from './types';
 import { BLOCKS_3_DAYS, CHAIN_NAMES, DEFAULT_BLOCKS_3_DAYS, LOG_PAGE_SIZE } from '../constants';
@@ -69,6 +70,8 @@ export interface UserCurrentBalance {
   balance: bigint;
   /** Assets queued via async withdraw, not yet claimable */
   pendingWithdraw: bigint;
+  /** Timestamp until which this account cannot redeem vault units. */
+  unitsLockedUntil?: bigint;
 }
 
 // V2 legacy wrapper calls can emit both receiver-aware and legacy events for one request.
@@ -103,6 +106,9 @@ async function queryDeploymentBalance(
   ]);
   const provisionerAddress = runtime.provisioner.address;
   const isV2 = runtime.provisioner.version === ContractVersion.V2;
+  const unitsLockedUntilPromise = isV2
+    ? getUserUnitsRefundableUntil(publicClient, provisionerAddress, address)
+    : Promise.resolve(undefined);
 
   const balance = await convertUnitsToToken(
     publicClient,
@@ -220,6 +226,7 @@ async function queryDeploymentBalance(
           pendingWithdrawUnits
         )
       : 0n;
+  const unitsLockedUntil = await unitsLockedUntilPromise;
 
   return {
     chain: CHAIN_NAMES[deployment.chainId] ?? `chain-${deployment.chainId}`,
@@ -229,6 +236,7 @@ async function queryDeploymentBalance(
     pendingDeposit,
     balance,
     pendingWithdraw,
+    ...(unitsLockedUntil !== undefined ? { unitsLockedUntil } : {}),
   };
 }
 
