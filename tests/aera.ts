@@ -28,6 +28,7 @@ import { getDepositReceiverApprovalTx } from '../src/evm/depositReceiverApproval
 import { getWithdrawTx } from '../src/evm/withdraw';
 import type { EvmWithdrawParams } from '../src/evm/withdraw';
 import { getSyncWithdrawQuote, getSyncWithdrawRate } from '../src/evm/withdrawQuote';
+import { getSyncDepositQuote } from '../src/evm/depositQuote';
 import type {
   SyncWithdrawQuoteBounds,
   SyncWithdrawQuoteContext,
@@ -40,6 +41,7 @@ import {
   AccountRequiredError,
   InvalidSlippageBPSError,
   InvalidSyncWithdrawBoundError,
+  InvalidSyncDepositBoundError,
   InvalidWithdrawParamsError,
   StalePriceError,
   UnsupportedDepositModeError,
@@ -841,6 +843,73 @@ describe('aera', () => {
     expect(steps[1].tx.args[2]).toBe(1_900n);
   });
 
+  test('uses a caller-reviewed minimum for a V2 sync deposit', async () => {
+    const [deposit] = await getDepositTx(aeraV2WalletClient(publicClientWithV2Reads()), {
+      vaultId: VAULT_ID,
+      amount: 2_000n,
+      depositMode: 'sync',
+      receiver: RECEIVER,
+      minUnitsOut: 1_234n,
+    });
+
+    expect(deposit.tx.type).toBe('deposit');
+    expect(deposit.tx.args[2]).toBe(1_234n);
+  });
+
+  test('rejects an invalid or non-sync caller-reviewed minimum', async () => {
+    const client = aeraV2WalletClient(publicClientWithV2Reads());
+
+    await expect(
+      getDepositTx(client, {
+        vaultId: VAULT_ID,
+        amount: 2_000n,
+        depositMode: 'sync',
+        minUnitsOut: 0n,
+      })
+    ).rejects.toBeInstanceOf(InvalidSyncDepositBoundError);
+
+    await expect(
+      getDepositTx(client, {
+        vaultId: VAULT_ID,
+        amount: 2_000n,
+        depositMode: 'async',
+        minUnitsOut: 1n,
+      })
+    ).rejects.toBeInstanceOf(InvalidSyncDepositBoundError);
+  });
+
+  test('rejects an invalid slippageBps before the account check, even without a wallet', async () => {
+    const client = aeraV2QuoteClient(publicClientWithV2Reads());
+
+    await expect(
+      getDepositTx(client, {
+        vaultId: VAULT_ID,
+        amount: 2_000n,
+        depositMode: 'sync',
+        slippageBps: 10_001,
+      })
+    ).rejects.toBeInstanceOf(InvalidSlippageBPSError);
+  });
+
+  test('uses the provisioner spender for async and the vault spender for sync', async () => {
+    const client = aeraV2WalletClient(publicClientWithV2Reads({ allowance: 0n }));
+
+    const [asyncApproval] = await getDepositTx(client, {
+      vaultId: VAULT_ID,
+      amount: 2_000n,
+      depositMode: 'async',
+    });
+    const [syncApproval, syncDeposit] = await getDepositTx(client, {
+      vaultId: VAULT_ID,
+      amount: 2_000n,
+      depositMode: 'sync',
+      minUnitsOut: 1_234n,
+    });
+
+    expect(asyncApproval.tx.args).toEqual([PROVISIONER_ADDRESS, 2_000n]);
+    expect(syncApproval.tx.args).toEqual([AERA_VAULT_ADDRESS, 2_000n]);
+    expect(syncDeposit.tx.args[2]).toBe(1_234n);
+  });
   test('builds Bob receiver approval before Alice deposits to Bob', async () => {
     const alice = privateKeyToAccount(ALICE_PRIVATE_KEY);
     const bob = privateKeyToAccount(TEST_PRIVATE_KEY);
@@ -984,6 +1053,71 @@ describe('aera', () => {
     });
   });
 
+  test('quotes a V2 sync deposit with the execution calculation', async () => {
+    const quote = await getSyncDepositQuote(
+      aeraV2QuoteClient(publicClientWithV2Reads({ syncDepositMultiplier: 9_500 })),
+      {
+        vaultId: VAULT_ID,
+        amount: 100n,
+        slippageBps: 100,
+      }
+    );
+
+    expect(quote).toEqual({ unitsOut: 95n, minUnitsOut: 94n });
+  });
+
+  test('rejects a sync deposit quote when sync deposits are disabled for the token', async () => {
+    const client = aeraV2QuoteClient(publicClientWithV2Reads({ syncDepositEnabled: false }));
+
+    await expect(
+      getSyncDepositQuote(client, {
+        vaultId: VAULT_ID,
+        amount: 100n,
+      })
+    ).rejects.toBeInstanceOf(UnsupportedDepositModeError);
+  });
+
+  test('quotes the selected asset in a multiasset vault', async () => {
+    const daiAddress: Address = '0x0000000000000000000000000000000000000da1';
+    const reads: ObservedContractRead[] = [];
+    const client = new GauntletClient({
+      evmClients: {
+        [base.id]: publicClientWithV2Reads({ onRead: (read) => reads.push(read) }),
+      },
+    });
+    client.setManifest({
+      version: 'test',
+      vaults: [
+        {
+          vaultId: VAULT_ID,
+          name: 'Mock multiasset Aera V2',
+          protocol: 'aera',
+          strategy: 'test',
+          deployments: [
+            {
+              ...aeraDeployment(),
+              supplyToken: [
+                { symbol: 'USDC', address: USDC_ADDRESS, decimals: 6 },
+                { symbol: 'DAI', address: daiAddress, decimals: 18 },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    await getSyncDepositQuote(client, {
+      vaultId: VAULT_ID,
+      assetSymbol: 'DAI',
+      amount: 100n,
+    });
+
+    expect(
+      reads.some(
+        ({ functionName, args }) => functionName === 'tokensDetails' && args?.[0] === daiAddress
+      )
+    ).toBe(true);
+  });
   test('treats supplied sync quote bounds as a sync withdraw request', async () => {
     const client = aeraV2WalletClient(publicClientWithV2Reads());
 
@@ -2424,16 +2558,26 @@ describe('aera V2 sync fork', () => {
 
       // ── Sync Deposit ──────────────────────────────────────────────────────────
 
+      const depositQuoteRequest = {
+        vaultId: V2_VAULT_ID,
+        amount: V2_DEPOSIT_AMOUNT,
+        slippageBps: 100,
+      };
+      const initialQuote = await getSyncDepositQuote(client, depositQuoteRequest);
+
       // No allowance yet → [approve, deposit]; for sync the approval spender is the vault itself
       const initialSteps = await getDepositTx(client, {
         vaultId: V2_VAULT_ID,
         amount: V2_DEPOSIT_AMOUNT,
         depositMode: 'sync',
+        slippageBps: 100,
+        minUnitsOut: initialQuote.minUnitsOut,
       });
       expect(initialSteps).toHaveLength(2);
       expect(initialSteps[0].tx.type).toBe('approve');
       expect(initialSteps[0].tx.args[0]).toBe(V2_VAULT_ADDRESS);
       expect(initialSteps[1].tx.type).toBe('deposit');
+      expect(initialSteps[1].tx.args[2]).toBe(initialQuote.minUnitsOut);
 
       const usdcBefore = await publicClient.readContract({
         address: USDC_ADDRESS,
@@ -2448,14 +2592,20 @@ describe('aera V2 sync fork', () => {
         account: account.address,
       });
 
+      // Approval can outlive a quote. Refresh before asking for the deposit signature.
+      const refreshedQuote = await getSyncDepositQuote(client, depositQuoteRequest);
+
       // Allowance now sufficient → [deposit] only
       const stepsAfterApproval = await getDepositTx(client, {
         vaultId: V2_VAULT_ID,
         amount: V2_DEPOSIT_AMOUNT,
         depositMode: 'sync',
+        slippageBps: 100,
+        minUnitsOut: refreshedQuote.minUnitsOut,
       });
       expect(stepsAfterApproval).toHaveLength(1);
       expect(stepsAfterApproval[0].tx.type).toBe('deposit');
+      expect(stepsAfterApproval[0].tx.args[2]).toBe(refreshedQuote.minUnitsOut);
 
       await sendTransactionAndWait(testClient, {
         to: stepsAfterApproval[0].payload.to,
@@ -2478,6 +2628,7 @@ describe('aera V2 sync fork', () => {
         args: [account.address],
       });
       expect(units).toBeGreaterThan(0n);
+      expect(units).toBeGreaterThanOrEqual(refreshedQuote.minUnitsOut);
 
       // Units are locked for depositRefundTimeout (3600 s) after sync deposit.
       await testClient.increaseTime({ seconds: 3601 });

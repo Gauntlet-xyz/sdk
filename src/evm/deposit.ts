@@ -8,6 +8,7 @@ import {
   VaultNotFoundError,
   UnsupportedAssetError,
   InvalidSlippageBPSError,
+  InvalidSyncDepositBoundError,
 } from '../errors';
 import {
   resolveAeraRuntimeContracts,
@@ -40,6 +41,8 @@ export interface EvmDepositParams {
   solverTip?: bigint;
   /** Maximum price age passed to async Aera provisioner requests. Defaults to 10 days. */
   maxPriceAge?: bigint;
+  /** Caller-reviewed minimum output for an explicit Aera synchronous deposit. */
+  minUnitsOut?: bigint;
 }
 
 /**
@@ -74,13 +77,15 @@ export async function getDepositTx(
   client: GauntletClient,
   params: EvmDepositParams
 ): Promise<PreparedTx[]> {
+  const slippageBps = params.slippageBps ?? DEFAULT_BPS;
+  if (!Number.isInteger(slippageBps) || slippageBps < 0 || slippageBps > Number(MAX_BPS)) {
+    throw new InvalidSlippageBPSError(slippageBps);
+  }
   if (
-    params.slippageBps !== undefined &&
-    (!Number.isInteger(params.slippageBps) ||
-      params.slippageBps < 0 ||
-      params.slippageBps > Number(MAX_BPS))
+    params.minUnitsOut !== undefined &&
+    (typeof params.minUnitsOut !== 'bigint' || params.minUnitsOut <= 0n)
   ) {
-    throw new InvalidSlippageBPSError(params.slippageBps);
+    throw new InvalidSyncDepositBoundError();
   }
 
   const resolved = await resolveVault(client, params.vaultId, params.chainId);
@@ -105,6 +110,12 @@ export async function getDepositTx(
   }
 
   const requestedDepositMode = parseOperationMode(params.vaultId, params.depositMode);
+  if (
+    params.minUnitsOut !== undefined &&
+    (protocol !== 'aera' || requestedDepositMode !== 'sync')
+  ) {
+    throw new InvalidSyncDepositBoundError();
+  }
   let modifiedDepositMode: OperationMode;
   let aeraRuntime: AeraRuntimeContracts | undefined;
 
@@ -159,12 +170,13 @@ export async function getDepositTx(
     async: modifiedDepositMode === 'async',
     asset: token,
     publicClient,
-    slippageBps: params.slippageBps ?? DEFAULT_BPS,
+    slippageBps,
     solverTip: params.solverTip,
     maxPriceAge: params.maxPriceAge,
     aeraRuntime,
+    minUnitsOut: params.minUnitsOut,
   });
   steps.push(...depositSteps);
 
-  return await Promise.all(steps.map((step) => encodeTransactionWithAttribution(client, step)));
+  return Promise.all(steps.map((step) => encodeTransactionWithAttribution(client, step)));
 }

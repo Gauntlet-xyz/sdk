@@ -38,6 +38,8 @@ export interface AdapterDepositParams {
   /** Maximum price age passed to async Aera provisioner requests. Defaults to 10 days. */
   maxPriceAge?: bigint;
   aeraRuntime?: AeraRuntimeContracts;
+  /** Caller-reviewed minimum output for an explicit synchronous deposit. */
+  minUnitsOut?: bigint;
 }
 
 export type AdapterWithdrawParams = {

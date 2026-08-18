@@ -54,6 +54,40 @@ const client = await createGauntletClientFromPrivy({
 });
 ```
 
+## Aera instant deposits
+
+Quote an Aera V2 instant deposit, then pass its minimum output to the transaction builder.
+
+```ts
+import { getDepositTx, getSyncDepositQuote, VaultId } from '@gauntlet-xyz/sdk';
+
+const request = {
+  vaultId: VaultId.AeraUsdAlpha,
+  amount: 1_000_000n,
+  slippageBps: 100,
+};
+let quote = await getSyncDepositQuote(client, request);
+let steps = await getDepositTx(client, {
+  ...request,
+  depositMode: 'sync',
+  minUnitsOut: quote.minUnitsOut,
+});
+
+if (steps[0]?.tx.type === 'approve') {
+  await sendAndConfirm(steps[0]);
+  quote = await getSyncDepositQuote(client, request);
+  steps = await getDepositTx(client, {
+    ...request,
+    depositMode: 'sync',
+    minUnitsOut: quote.minUnitsOut,
+  });
+}
+await sendAndConfirm(steps[0]);
+```
+
+The contract enforces `minUnitsOut`. Requote after approval so the deposit signature uses the
+latest reviewed minimum.
+
 ## Aera instant withdrawals
 
 Use the live capability result to decide whether to offer an instant withdrawal, then pass the

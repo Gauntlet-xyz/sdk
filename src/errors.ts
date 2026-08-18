@@ -202,3 +202,10 @@ export class InvalidSlippageBPSError extends GauntletSDKError {
     this.slippage = slippage;
   }
 }
+
+export class InvalidSyncDepositBoundError extends GauntletSDKError {
+  constructor() {
+    super('Sync deposit minUnitsOut requires explicit sync mode and must be greater than zero');
+    this.name = 'InvalidSyncDepositBoundError';
+  }
+}

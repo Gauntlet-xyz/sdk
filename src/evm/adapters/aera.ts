@@ -225,6 +225,7 @@ export const aeraAdapter: EvmProtocolAdapter = {
       solverTip = DEFAULT_SOLVER_TIP,
       maxPriceAge = DEFAULT_MAX_PRICE_AGE,
       aeraRuntime,
+      minUnitsOut: requestedMinUnitsOut,
     } = params;
 
     const runtime = requireAeraRuntime(aeraRuntime);
@@ -238,17 +239,19 @@ export const aeraAdapter: EvmProtocolAdapter = {
       throw new UnsupportedFeatureError('Aera: sync operations on V1');
     }
 
-    const tokensInForUnits = isAsync ? subtractSolverTip(amount, solverTip) : amount;
-    const vaultUnits = await getDepositUnitsOut({
-      publicClient,
-      runtime,
-      vault: vault.vaultAddress,
-      token: asset.address,
-      tokensIn: tokensInForUnits,
-      isAsync,
-    });
-
-    const minUnitsOut = applySlippageDown(vaultUnits, slippageBps);
+    const minUnitsOut =
+      requestedMinUnitsOut ??
+      applySlippageDown(
+        await getDepositUnitsOut({
+          publicClient,
+          runtime,
+          vault: vault.vaultAddress,
+          token: asset.address,
+          tokensIn: isAsync ? subtractSolverTip(amount, solverTip) : amount,
+          isAsync,
+        }),
+        slippageBps
+      );
 
     if (isAsync) {
       const deadline = getRequestDeadline(vault.expirationDays);

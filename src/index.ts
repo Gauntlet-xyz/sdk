@@ -15,6 +15,7 @@ export type { VaultFilter } from './evm/vaults';
 
 export { getDepositTx } from './evm/deposit';
 export { getDepositReceiverApprovalTx } from './evm/depositReceiverApproval';
+export { getSyncDepositQuote } from './evm/depositQuote';
 export { getWithdrawTx } from './evm/withdraw';
 export { getSyncWithdrawQuote, getSyncWithdrawRate } from './evm/withdrawQuote';
 export { getAeraTokenModeSupport } from './evm/tokenModes';
@@ -34,6 +35,7 @@ export {
 
 export type { EvmDepositParams } from './evm/deposit';
 export type { EvmDepositReceiverApprovalParams } from './evm/depositReceiverApproval';
+export type { SyncDepositQuote, SyncDepositQuoteParams } from './evm/depositQuote';
 export type { EvmWithdrawParams } from './evm/withdraw';
 export type {
   SyncWithdrawQuote,
@@ -64,6 +66,7 @@ export {
   UnsupportedProtocolError,
   UnsupportedFeatureError,
   InvalidWithdrawParamsError,
+  InvalidSyncDepositBoundError,
   InvalidSyncWithdrawBoundError,
   InvalidSlippageBPSError,
   UnimplementedFeatureError,
