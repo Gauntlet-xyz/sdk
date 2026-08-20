@@ -85,8 +85,20 @@ if (steps[0]?.tx.type === 'approve') {
 await sendAndConfirm(steps[0]);
 ```
 
-The contract enforces `minUnitsOut`. Requote after approval so the deposit signature uses the
-latest reviewed minimum.
+`SyncDepositQuote` has five required fields: `unitsOut`, `minUnitsOut`, `numeraireOut`, `feeBps`, and
+`slippageBps`. `slippageBps` is the basis-point tolerance used to derive `minUnitsOut`; `feeBps` is
+the Instant Supply fee applied to the deposited token amount; `numeraireOut` is the post-fee deposit
+amount converted to the vault's numeraire, for display. The contract enforces `minUnitsOut`. Requote
+after approval so the deposit signature uses the latest reviewed minimum.
+
+Use `getSyncDepositRate` to read the live Instant Supply fee without an amount, e.g. to show a fee
+caption before the user has typed a deposit amount:
+
+```ts
+import { getSyncDepositRate, VaultId } from '@gauntlet-xyz/sdk';
+
+const { feeBps } = await getSyncDepositRate(client, { vaultId: VaultId.AeraUsdAlpha });
+```
 
 ## Aera instant withdrawals
 

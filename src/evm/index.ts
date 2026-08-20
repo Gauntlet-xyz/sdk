@@ -1,6 +1,6 @@
 export { getDepositTx } from './deposit';
 export { getDepositReceiverApprovalTx } from './depositReceiverApproval';
-export { getSyncDepositQuote } from './depositQuote';
+export { getSyncDepositQuote, getSyncDepositRate } from './depositQuote';
 export { getWithdrawTx } from './withdraw';
 export { getSyncWithdrawQuote, getSyncWithdrawRate } from './withdrawQuote';
 export { getAeraTokenModeSupport } from './tokenModes';
@@ -40,7 +40,12 @@ export {
 
 export type { EvmDepositParams } from './deposit';
 export type { EvmDepositReceiverApprovalParams } from './depositReceiverApproval';
-export type { SyncDepositQuote, SyncDepositQuoteParams } from './depositQuote';
+export type {
+  SyncDepositQuote,
+  SyncDepositQuoteParams,
+  SyncDepositRate,
+  SyncDepositRateParams,
+} from './depositQuote';
 export type { EvmWithdrawParams } from './withdraw';
 export type {
   SyncWithdrawQuote,

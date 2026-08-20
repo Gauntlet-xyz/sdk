@@ -28,7 +28,7 @@ import { getDepositReceiverApprovalTx } from '../src/evm/depositReceiverApproval
 import { getWithdrawTx } from '../src/evm/withdraw';
 import type { EvmWithdrawParams } from '../src/evm/withdraw';
 import { getSyncWithdrawQuote, getSyncWithdrawRate } from '../src/evm/withdrawQuote';
-import { getSyncDepositQuote } from '../src/evm/depositQuote';
+import { getSyncDepositQuote, getSyncDepositRate } from '../src/evm/depositQuote';
 import type {
   SyncWithdrawQuoteBounds,
   SyncWithdrawQuoteContext,
@@ -1063,7 +1063,45 @@ describe('aera', () => {
       }
     );
 
-    expect(quote).toEqual({ unitsOut: 95n, minUnitsOut: 94n });
+    expect(quote).toEqual({
+      unitsOut: 95n,
+      minUnitsOut: 94n,
+      numeraireOut: 95n,
+      feeBps: 500n,
+      slippageBps: 100,
+    });
+  });
+
+  test('converts the post-fee deposit amount to numeraire separately from vault units', async () => {
+    const quote = await getSyncDepositQuote(
+      aeraV2QuoteClient(
+        publicClientWithV2Reads({ syncDepositMultiplier: 9_500, tokenToNumeraireMultiplier: 2n })
+      ),
+      {
+        vaultId: VAULT_ID,
+        amount: 100n,
+        slippageBps: 100,
+      }
+    );
+
+    expect(quote.unitsOut).toBe(95n);
+    expect(quote.numeraireOut).toBe(190n);
+  });
+
+  test('reads the Instant Supply fee without a deposit amount', async () => {
+    const client = aeraV2QuoteClient(publicClientWithV2Reads({ syncDepositMultiplier: 9_500 }));
+
+    await expect(getSyncDepositRate(client, { vaultId: VAULT_ID })).resolves.toEqual({
+      feeBps: 500n,
+    });
+  });
+
+  test('rejects a sync deposit rate when sync deposits are disabled for the token', async () => {
+    const client = aeraV2QuoteClient(publicClientWithV2Reads({ syncDepositEnabled: false }));
+
+    await expect(getSyncDepositRate(client, { vaultId: VAULT_ID })).rejects.toBeInstanceOf(
+      UnsupportedDepositModeError
+    );
   });
 
   test('rejects a sync deposit quote when sync deposits are disabled for the token', async () => {

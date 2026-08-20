@@ -11,6 +11,7 @@ import { priceAndFeeCalculatorV2Abi } from '../abis/priceAndFeeCalculatorV2';
 import { provisionerV2Abi } from '../abis/provisionerV2';
 import {
   Rounding,
+  convertTokenToNumeraire,
   convertTokenToUnitsIfActive,
   convertUnitsToTokenIfActive,
 } from './priceAndFeeCalculator';
@@ -100,7 +101,7 @@ export async function getKnownSyncRedeemLiquidityTokens(
   });
 }
 
-async function getDepositUnitsOut({
+async function getDepositQuote({
   client,
   provisioner,
   feeCalculator,
@@ -120,12 +121,12 @@ async function getDepositUnitsOut({
   tokensIn: bigint;
   multiplierIndex: 4 | 6;
   options?: SyncRedeemReadOptions;
-}): Promise<bigint> {
+}): Promise<{ unitsOut: bigint; multiplierBps: bigint }> {
   const tokenDetails = await getTokenDetails(client, provisioner, token, options);
-  const multiplier = BigInt(tokenDetails[multiplierIndex]);
-  const adjustedTokensIn = (tokensIn * multiplier) / MAX_BPS;
+  const multiplierBps = BigInt(tokenDetails[multiplierIndex]);
+  const adjustedTokensIn = (tokensIn * multiplierBps) / MAX_BPS;
 
-  return convertTokenToUnitsIfActive(
+  const unitsOut = await convertTokenToUnitsIfActive(
     client,
     feeCalculator,
     feeCalculatorVersion,
@@ -135,6 +136,8 @@ async function getDepositUnitsOut({
     Rounding.Floor,
     options
   );
+
+  return { unitsOut, multiplierBps };
 }
 
 async function getRedeemTokenOut({
@@ -359,7 +362,7 @@ export async function getAsyncDepositUnitsOut(
   token: Address,
   tokensIn: bigint
 ): Promise<bigint> {
-  return getDepositUnitsOut({
+  const quote = await getDepositQuote({
     client,
     provisioner,
     feeCalculator,
@@ -369,7 +372,28 @@ export async function getAsyncDepositUnitsOut(
     tokensIn,
     multiplierIndex: 4,
   });
+  return quote.unitsOut;
 }
+
+const getSyncDepositQuote = (
+  client: PublicClient,
+  provisioner: Address,
+  feeCalculator: Address,
+  feeCalculatorVersion: ContractVersion,
+  vault: Address,
+  token: Address,
+  tokensIn: bigint
+) =>
+  getDepositQuote({
+    client,
+    provisioner,
+    feeCalculator,
+    feeCalculatorVersion,
+    vault,
+    token,
+    tokensIn,
+    multiplierIndex: 6,
+  });
 
 export async function getSyncDepositUnitsOut(
   client: PublicClient,
@@ -380,16 +404,56 @@ export async function getSyncDepositUnitsOut(
   token: Address,
   tokensIn: bigint
 ): Promise<bigint> {
-  return getDepositUnitsOut({
+  const quote = await getSyncDepositQuote(
     client,
     provisioner,
     feeCalculator,
     feeCalculatorVersion,
     vault,
     token,
-    tokensIn,
-    multiplierIndex: 6,
-  });
+    tokensIn
+  );
+  return quote.unitsOut;
+}
+
+export async function getSyncDepositQuoteValues(
+  client: PublicClient,
+  provisioner: Address,
+  feeCalculator: Address,
+  feeCalculatorVersion: ContractVersion,
+  vault: Address,
+  token: Address,
+  tokensIn: bigint
+): Promise<{ unitsOut: bigint; feeBps: bigint; numeraireOut: bigint }> {
+  const { unitsOut, multiplierBps } = await getSyncDepositQuote(
+    client,
+    provisioner,
+    feeCalculator,
+    feeCalculatorVersion,
+    vault,
+    token,
+    tokensIn
+  );
+  const numeraireOut = await convertTokenToNumeraire(
+    client,
+    feeCalculator,
+    feeCalculatorVersion,
+    vault,
+    token,
+    (tokensIn * multiplierBps) / MAX_BPS
+  );
+  return { unitsOut, feeBps: MAX_BPS - multiplierBps, numeraireOut };
+}
+
+/** Reads the live Instant Supply fee for a vault token, independent of the deposit amount. */
+export async function getSyncDepositFeeBps(
+  client: PublicClient,
+  provisioner: Address,
+  token: Address,
+  options: SyncRedeemReadOptions = {}
+): Promise<bigint> {
+  const tokenDetails = await getTokenDetails(client, provisioner, token, options);
+  return MAX_BPS - BigInt(tokenDetails[6]);
 }
 
 export async function getAsyncRedeemTokenOut(
