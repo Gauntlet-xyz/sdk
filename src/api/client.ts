@@ -23,6 +23,7 @@ export type FeaturedVaultsResponse = Schemas['FeaturedVaultsResponse'];
 export type StrategyCard = Schemas['StrategyCard'];
 export type StrategyListResponse = Schemas['StrategyListResponse'];
 export type TvlResponse = Schemas['TvlResponse'];
+export type TvlBreakdownMode = Schemas['TvlBreakdownMode'];
 export type LatestPriceResponse = Schemas['LatestPriceResponse'];
 export type PriceTimeseriesResponse = Schemas['TimeseriesResponse'];
 export type TokenRef = Schemas['TokenRef'];
@@ -231,9 +232,13 @@ export class GauntletApi {
     } while (next);
   }
 
-  /** GET /v1/tvl — aggregate Gauntlet TVL, optionally with per-source breakdown. */
-  tvl(options: { includeBreakdown?: boolean } = {}): Promise<TvlResponse> {
-    return this.get('/v1/tvl', { include_breakdown: options.includeBreakdown });
+  /**
+   * GET /v1/tvl — aggregate Gauntlet TVL. Pass `mode` for a `breakdown`:
+   * `chain` for one row per chain, `strategy` for one row per curated
+   * strategy. Omit it for the headline totals only.
+   */
+  tvl(options: { mode?: TvlBreakdownMode } = {}): Promise<TvlResponse> {
+    return this.get('/v1/tvl', { mode: options.mode });
   }
 
   /** GET /v1/prices — latest USD price for a token. */

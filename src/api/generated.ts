@@ -113,9 +113,31 @@ export interface paths {
         };
         /**
          * Get live aggregate TVL
-         * @description Returns live aggregate Gauntlet TVL composed from indexed Gaia vault data and configured external TVL sources. Source totals are always returned; pass `?include_breakdown=true` for chain and external-source explainability rows.
+         * @description Returns live aggregate Gauntlet TVL composed from indexed Gaia vault data and configured external TVL sources. `totals` always carries three coarse tranches: `vault_curation` (every indexed non-Aera vault plus Solana — Morpho, Moolah and Symbiotic on EVM plus Kamino on Solana, which is why it is not named for a protocol), `aera_v2` and `aera` (Aera V3); the Aera generations are separate product lines, not part of `vault_curation`. Pass `?mode=chain` for one `breakdown` row per chain, or `?mode=strategy` for one row per curated strategy from the admin registry, with indexed vaults no strategy claims under `uncategorized`. Aera V3 (`aera_indexed`), `aera_v2` and `solana` are whole rows in either mode, so the rows always sum to the headline total. Without `mode` no `breakdown` is returned.
          */
         get: operations["get_tvl"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tvl/timeseries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the daily aggregate TVL timeseries
+         * @description Returns a fixed trailing 3-month daily series of aggregate Gauntlet TVL. Without `mode` each point's `sources` carry the same three coarse tranches the live `/v1/tvl` totals report — `vault_curation` (every indexed non-Aera vault plus Solana), `aera_v2` and `aera` (Aera V3). Pass `?mode=strategy` for a per-point `sources` breakdown with one entry per curated strategy (`prime_lending`, `balanced_lending`, `frontier_lending`, …), or `?mode=chain` for one entry per chain; indexed vaults that no curated strategy claims roll up under `uncategorized`. `aera` (Aera V3) is a whole entry in either mode, as are `aera_v2` and `solana`, which are read from the `tvl_history` table (populated by the hourly TVL-history job and its backfill) since neither source is indexed. The rest is derived at read time from indexed Envio vault history plus historical USD pricing. Every point carries the same source ids in the same order, and they sum to that point's total, which does not depend on `mode`. A day with no data for a source contributes 0 to that day's total rather than carrying the last known value forward.
+         *
+         *     Served from a cached snapshot that is refreshed off the request path, so no caller pays for a recompute. `meta.data_as_of` is set when the snapshot is past its refresh window and a refresh is running behind the response; it is absent when the series is current.
+         */
+        get: operations["get_tvl_timeseries"];
         put?: never;
         post?: never;
         delete?: never;
@@ -720,6 +742,12 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
         };
+        /**
+         * @description Which partition of indexed vault TVL the caller asked for. Absent
+         *     from a request means the headline figures only, with no breakdown.
+         * @enum {string}
+         */
+        TvlBreakdownMode: "chain" | "strategy";
         TvlResponse: {
             data: components["schemas"]["TvlSummary"];
             meta: components["schemas"]["BasicMeta"];
@@ -730,6 +758,33 @@ export interface components {
             tvl: components["schemas"]["TvlAmount"];
             /** Format: date-time */
             updated_at: string;
+        };
+        TvlTimeseriesPoint: {
+            /**
+             * @description The day's breakdown. `?mode=` picks how it is partitioned; the
+             *     total above never depends on that choice.
+             */
+            sources: components["schemas"]["TvlTimeseriesSourceAmount"][];
+            /** Format: date-time */
+            timestamp: string;
+            tvl: components["schemas"]["TvlAmount"];
+        };
+        TvlTimeseriesResponse: {
+            data: components["schemas"]["TvlTimeseriesPoint"][];
+            meta: components["schemas"]["WindowMeta"];
+        };
+        /**
+         * @description One series of the day's breakdown. `id` is a curated strategy id
+         *     (`prime_lending`, `balanced_lending`, `frontier_lending`, …) in
+         *     `mode=strategy`, an admin chain slug (`ethereum`, `base`, …) in
+         *     `mode=chain`, or one of the reserved ids `aera`, `aera_v2`,
+         *     `solana`, `uncategorized`. Every point carries the same ids in the
+         *     same order, and they sum to the point's `tvl`.
+         */
+        TvlTimeseriesSourceAmount: {
+            id: string;
+            label: string;
+            tvl: components["schemas"]["TvlAmount"];
         };
         TvlTotal: {
             id: string;
@@ -960,6 +1015,39 @@ export interface components {
             data: components["schemas"]["VaultTimeseriesPoint"][];
             meta: components["schemas"]["TimeseriesMeta"];
         };
+        /**
+         * @description Doc type for a windowed timeseries served as one fixed grid: every
+         *     point in the window, so there is no page cap and no cursor. Split
+         *     from [`TimeseriesMeta`], whose required `limit` those handlers leave
+         *     `None`. That would put a never-populated required field in the
+         *     generated SDK types.
+         */
+        WindowMeta: {
+            /**
+             * Format: int64
+             * @description Number of points in this response.
+             */
+            count: number;
+            /**
+             * Format: date-time
+             * @description When the served data was computed, on endpoints that serve a
+             *     cached snapshot past its refresh window while a refresh runs
+             *     behind the response. Absent means the data is current.
+             */
+            data_as_of?: string | null;
+            /** Format: date-time */
+            end: string;
+            /** @description Item-scoped failures isolated from an aggregate response. */
+            partial_errors?: components["schemas"]["PartialResponseError"][] | null;
+            /** Format: date-time */
+            refreshed_at: string;
+            request_id: string;
+            /**
+             * Format: date-time
+             * @description Window bounds the response covers.
+             */
+            start: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -1125,10 +1213,8 @@ export interface operations {
     get_tvl: {
         parameters: {
             query?: {
-                /** @description Include chain and external-source TVL breakdown rows. */
-                include_breakdown?: boolean;
-                /** @description Deprecated alias for include_breakdown. */
-                include_sources?: boolean;
+                /** @description Breakdown to return: `chain` or `strategy`. Omit for the headline figures only. */
+                mode?: components["schemas"]["TvlBreakdownMode"];
             };
             header?: never;
             path?: never;
@@ -1143,6 +1229,47 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TvlResponse"];
+                };
+            };
+            /** @description Missing or invalid auth */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Data source unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_tvl_timeseries: {
+        parameters: {
+            query?: {
+                /** @description Per-point breakdown to return: `chain` or `strategy`. Omit for the daily total only. */
+                mode?: components["schemas"]["TvlBreakdownMode"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Daily aggregate TVL timeseries */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TvlTimeseriesResponse"];
                 };
             };
             /** @description Missing or invalid auth */
