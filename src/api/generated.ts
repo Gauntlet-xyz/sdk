@@ -378,6 +378,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/vaults/slug/{slug}/primary/timeseries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get primary deployment timeseries by vault slug
+         * @description Returns historical metric data for the Admin-selected primary deployment of an enabled logical vault. `meta.resolved_vault_id` identifies the concrete deployment. The response and query parameters are otherwise identical to `/{vault_id}/timeseries`; use this route when callers know the stable public vault slug but should not depend on its current chain or address.
+         */
+        get: operations["get_primary_vault_timeseries_by_slug"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -712,6 +732,11 @@ export interface components {
             /** Format: date-time */
             refreshed_at: string;
             request_id: string;
+            /**
+             * @description Concrete deployment selected by a logical-vault route. Omitted when
+             *     the deployment is already identified in the request path.
+             */
+            resolved_vault_id?: string | null;
             /**
              * Format: date-time
              * @description Window bounds the response covers (echoes the request when set).
@@ -1825,6 +1850,78 @@ export interface operations {
                 };
             };
             /** @description Data source unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_primary_vault_timeseries_by_slug: {
+        parameters: {
+            query?: {
+                /** @description Window end: ISO 8601 date or RFC 3339 timestamp. */
+                end?: string;
+                /** @description Sampling granularity: `day` (default), `hour`, `week`, or `month`. */
+                granularity?: string;
+                /** @description Page size (1–10000, default 1000). */
+                limit?: number;
+                /** @description Opaque cursor from previous `meta.next_cursor`. */
+                next?: string;
+                /** @description Sort direction: `asc` (default) or `desc`. */
+                order?: string;
+                /** @description Window start: ISO 8601 date or RFC 3339 timestamp. */
+                start?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Admin-curated public vault slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Primary deployment timeseries data points */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultTimeseriesResponse"];
+                };
+            };
+            /** @description Missing or invalid auth */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Vault slug not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid parameters */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Data source or vault curation unavailable */
             503: {
                 headers: {
                     [name: string]: unknown;

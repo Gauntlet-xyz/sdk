@@ -142,6 +142,16 @@ export class GauntletApi {
     return this.get(`/v1/vaults/slug/${encodeURIComponent(slug)}`);
   }
 
+  /** GET /v1/vaults/slug/{slug}/primary/timeseries — primary deployment history. */
+  primaryVaultTimeseriesBySlug(
+    slug: string,
+    options: TimeWindowOptions = {}
+  ): Promise<VaultTimeseriesResponse> {
+    return this.get(`/v1/vaults/slug/${encodeURIComponent(slug)}/primary/timeseries`, {
+      ...options,
+    });
+  }
+
   /** GET /v1/vaults/featured — admin-curated featured vault cards. */
   featuredVaults(): Promise<FeaturedVaultsResponse> {
     return this.get('/v1/vaults/featured');
