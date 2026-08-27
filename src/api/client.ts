@@ -24,6 +24,8 @@ export type StrategyCard = Schemas['StrategyCard'];
 export type StrategyListResponse = Schemas['StrategyListResponse'];
 export type TvlResponse = Schemas['TvlResponse'];
 export type TvlBreakdownMode = Schemas['TvlBreakdownMode'];
+export type TvlTimeseriesResponse = Schemas['TvlTimeseriesResponse'];
+export type TvlTimeseriesPoint = Schemas['TvlTimeseriesPoint'];
 export type LatestPriceResponse = Schemas['LatestPriceResponse'];
 export type PriceTimeseriesResponse = Schemas['TimeseriesResponse'];
 export type TokenRef = Schemas['TokenRef'];
@@ -249,6 +251,16 @@ export class GauntletApi {
    */
   tvl(options: { mode?: TvlBreakdownMode } = {}): Promise<TvlResponse> {
     return this.get('/v1/tvl', { mode: options.mode });
+  }
+
+  /**
+   * GET /v1/tvl/timeseries — daily aggregate Gauntlet TVL over a fixed
+   * 3-month trailing window. `mode` partitions each point's `sources` the
+   * same way `tvl()` partitions its `breakdown`; a point's total never
+   * depends on it.
+   */
+  tvlTimeseries(options: { mode?: TvlBreakdownMode } = {}): Promise<TvlTimeseriesResponse> {
+    return this.get('/v1/tvl/timeseries', { mode: options.mode });
   }
 
   /** GET /v1/prices — latest USD price for a token. */
