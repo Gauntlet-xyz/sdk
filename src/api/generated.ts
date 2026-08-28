@@ -983,6 +983,12 @@ export interface components {
             name: string;
             numeraire_token: components["schemas"]["TokenRef"];
             strategy?: null | components["schemas"]["StrategyRef"];
+            /**
+             * @description CAIP id of the vault that replaces this one on the same chain
+             *     (Morpho V1 to V2 today); `null` when there is no visible
+             *     successor. Consumers use it to point holders at the new vault.
+             */
+            successor_vault_id?: string | null;
             symbol: string;
             vault_id: string;
             vault_type: string;
