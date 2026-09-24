@@ -35,6 +35,8 @@ export type {
   VaultAllocationsResponse,
   VaultMetrics,
   VaultsOptions,
+  VaultGroupTimeseriesPoint,
+  VaultGroupTimeseriesResponse,
   VaultTimeseriesPoint,
   VaultTimeseriesResponse,
 } from './client';

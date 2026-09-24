@@ -16,6 +16,8 @@ export type VaultListResponse = Schemas['VaultListResponse'];
 export type VaultAllocations = Schemas['VaultAllocations'];
 export type VaultAllocationsResponse = Schemas['VaultAllocationsResponse'];
 export type VaultTimeseriesResponse = Schemas['VaultTimeseriesResponse'];
+export type VaultGroupTimeseriesResponse = Schemas['VaultGroupTimeseriesResponse'];
+export type VaultGroupTimeseriesPoint = Schemas['VaultGroupTimeseriesPoint'];
 export type VaultTimeseriesPoint = Schemas['VaultTimeseriesPoint'];
 export type VaultMetrics = Schemas['VaultMetrics'];
 export type FeaturedVault = Schemas['FeaturedVault'];
@@ -142,6 +144,16 @@ export class GauntletApi {
   /** GET /v1/vaults/slug/{slug} — all enabled deployments for one exact vault slug. */
   vaultsBySlug(slug: string): Promise<VaultListResponse> {
     return this.get(`/v1/vaults/slug/${encodeURIComponent(slug)}`);
+  }
+
+  /** GET /v1/vaults/slug/{slug}/timeseries — aggregate USD TVL and supply, plus primary-deployment metrics.
+   * APY and unit price come from meta.resolved_vault_id; null marks missing data.
+   */
+  vaultTimeseriesBySlug(
+    slug: string,
+    options: TimeWindowOptions = {}
+  ): Promise<VaultGroupTimeseriesResponse> {
+    return this.get(`/v1/vaults/slug/${encodeURIComponent(slug)}/timeseries`, { ...options });
   }
 
   /** GET /v1/vaults/slug/{slug}/primary/timeseries — primary deployment history. */

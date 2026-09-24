@@ -400,6 +400,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/vaults/slug/{slug}/timeseries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get vault history by slug
+         * @description Returns USD TVL and outstanding share supply summed across every currently linked deployment of an enabled logical vault, including hidden vaults. Uses UTC-aligned snapshots and timestamp pagination. A deployment contributes zero before its indexed creation time; after creation, missing snapshots or USD prices produce null TVL, never a partial sum. Does not carry values forward. Missing supply or a missing snapshot after deployment creation produces null total_supply, independent of USD price availability. APY and unit_price come from the Admin-selected primary deployment at the same timestamp, identified by meta.resolved_vault_id. Missing primary snapshots yield null primary metrics; APY respects Admin visibility. TVL is USD-only because deployment numeraires may differ; native TVL remains available on the primary/per-deployment endpoints. This is a sum of deployment TVLs, not the legacy asset-position valuation. Unknown or disabled slugs return 404; incomplete deployment metadata returns 503.
+         */
+        get: operations["get_vault_timeseries_by_slug"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -638,6 +658,20 @@ export interface components {
             usd: number;
         };
         /**
+         * @description Deployment-local metrics. Null when the primary has no snapshot at this
+         *     timestamp; APY also respects the Admin visibility setting.
+         */
+        PrimaryVaultTimeseriesMetrics: {
+            /** Format: double */
+            apy_7d?: number | null;
+            /** Format: double */
+            apy_30d?: number | null;
+            /** Format: double */
+            apy_90d?: number | null;
+            /** @description Numeraire-token units per share on the primary deployment. */
+            unit_price?: string | null;
+        };
+        /**
          * @description JSON-number ratio paired across native (in-kind) and USD denominations.
          *     Null when event history is unavailable or cannot support ROI replay.
          */
@@ -735,8 +769,9 @@ export interface components {
             refreshed_at: string;
             request_id: string;
             /**
-             * @description Concrete deployment selected by a logical-vault route. Omitted when
-             *     the deployment is already identified in the request path.
+             * @description Primary deployment selected for deployment-local metrics by a slug
+             *     route. The aggregate slug route still sums TVL and supply across deployments.
+             *     Omitted when the deployment is already identified in the request path.
              */
             resolved_vault_id?: string | null;
             /**
@@ -1013,6 +1048,24 @@ export interface components {
             is_stable: boolean;
             /** @description Unique, curator-managed public route (`stgusda`). */
             slug: string;
+        };
+        VaultGroupTimeseriesPoint: components["schemas"]["PrimaryVaultTimeseriesMetrics"] & {
+            /** Format: date-time */
+            timestamp: string;
+            /**
+             * @description Outstanding shares summed across linked deployments. Null if an existing
+             *     deployment has a missing snapshot or supply; independent of USD pricing.
+             */
+            total_supply?: string | null;
+            /**
+             * @description Sum across all linked deployments. Null if an existing deployment
+             *     has a missing snapshot or USD price; never a partial sum.
+             */
+            tvl: components["schemas"]["CuratedTvl"];
+        };
+        VaultGroupTimeseriesResponse: {
+            data: components["schemas"]["VaultGroupTimeseriesPoint"][];
+            meta: components["schemas"]["TimeseriesMeta"];
         };
         VaultListResponse: {
             data: components["schemas"]["VaultDetail"][];
@@ -1900,6 +1953,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VaultTimeseriesResponse"];
+                };
+            };
+            /** @description Missing or invalid auth */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Vault slug not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid parameters */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Data source or vault curation unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_vault_timeseries_by_slug: {
+        parameters: {
+            query?: {
+                /** @description Window end: ISO 8601 date or RFC 3339 timestamp. */
+                end?: string;
+                /** @description Sampling granularity: `day` (default), `hour`, `week`, or `month`. */
+                granularity?: string;
+                /** @description Page size (1–10000, default 1000). */
+                limit?: number;
+                /** @description Opaque cursor from previous `meta.next_cursor`. */
+                next?: string;
+                /** @description Sort direction: `asc` (default) or `desc`. */
+                order?: string;
+                /** @description Window start: ISO 8601 date or RFC 3339 timestamp. */
+                start?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Admin-curated public vault slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Aggregate USD TVL and share supply with primary deployment metrics */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultGroupTimeseriesResponse"];
                 };
             };
             /** @description Missing or invalid auth */

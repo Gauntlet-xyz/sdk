@@ -101,10 +101,12 @@ describe('curated surfaces', () => {
     const api = new GauntletApi({ fetch });
 
     await api.vaultsBySlug('hidden/vault');
+    await api.vaultTimeseriesBySlug('hidden/vault', { granularity: 'day', limit: 500 });
     await api.primaryVaultTimeseriesBySlug('hidden/vault', { granularity: 'day', limit: 500 });
 
     expect(urls).toEqual([
       'https://api.gauntlet.xyz/v1/vaults/slug/hidden%2Fvault',
+      'https://api.gauntlet.xyz/v1/vaults/slug/hidden%2Fvault/timeseries?granularity=day&limit=500',
       'https://api.gauntlet.xyz/v1/vaults/slug/hidden%2Fvault/primary/timeseries?granularity=day&limit=500',
     ]);
   });

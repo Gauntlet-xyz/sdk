@@ -173,7 +173,16 @@ const client = new GauntletClient({ apiKey: process.env.GAUNTLET_API_KEY });
 const { data: vaults } = await client.api.vaults(); // live TVL / APY / unit price
 const { data: positions } = await client.api.positions(wallet); // value, cost basis, PnL, ROI
 const { data: history } = await client.api.positionTimeseries(wallet, vaultId);
+const { data: vaultHistory } = await client.api.vaultTimeseriesBySlug('gtusda'); // aggregate TVL + primary metrics
+const { data: primary } = await client.api.primaryVaultTimeseriesBySlug('gtusda'); // primary only
 ```
+
+For logical-vault history, use `vaultTimeseriesBySlug`: each point contains
+aggregate `tvl.usd` and `total_supply` alongside primary-deployment `apy_7d`,
+`apy_30d`, `apy_90d`, and `unit_price`. `meta.resolved_vault_id` identifies that primary.
+Null values mark missing data and should render as gaps. Use
+`primaryVaultTimeseriesBySlug` when all metrics, including TVL, should describe
+only the primary deployment; that response also includes its native-token TVL.
 
 Vault ids on the API are CAIP-10 (`"{chainId}:{address}"`); convert to and from manifest vault ids with `apiVaultIdFromVaultId` / `vaultIdFromApiVaultId`. Monetary values are human-unit decimal strings; convert exactly with `decimalToBigInt` / `sharesToBigInt` (throws instead of rounding).
 
