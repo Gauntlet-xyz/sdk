@@ -113,7 +113,7 @@ export interface paths {
         };
         /**
          * Get live aggregate TVL
-         * @description Returns live aggregate Gauntlet TVL composed from indexed Gaia vault data and configured external TVL sources. `totals` always carries three coarse tranches: `vault_curation` (every indexed non-Aera vault plus Solana — Morpho, Moolah and Symbiotic on EVM plus Kamino on Solana, which is why it is not named for a protocol), `aera_v2` and `aera` (Aera V3); the Aera generations are separate product lines, not part of `vault_curation`. Pass `?mode=chain` for one `breakdown` row per chain, or `?mode=strategy` for one row per curated strategy from the admin registry, with indexed vaults no strategy claims under `uncategorized`. Aera V3 (`aera_indexed`), `aera_v2` and `solana` are whole rows in either mode, so the rows always sum to the headline total. Without `mode` no `breakdown` is returned.
+         * @description Returns live aggregate Gauntlet TVL composed from indexed Gaia vault data and configured external TVL sources. `totals` always carries three coarse tranches: `vault_curation` (indexed non-Aera vaults, Symbiotic and Solana), `aera_v2` and `aera` (Aera V3). The `vault_curation` row spans several protocols. The Aera generations are separate product lines, not part of `vault_curation`. Pass `?mode=chain` for one `breakdown` row per chain, `?mode=protocol` for rows that map to Aera, Morpho V1, Morpho V2, Lista, Kamino and curated Symbiotic TVL, or `?mode=strategy` for one row per curated strategy from the admin registry, with indexed vaults no strategy claims under `uncategorized`. Protocol mode combines Aera V2 and V3 as `aera` and names the Solana source `kamino`. Symbiotic reads onchain `activeStake()`. Other modes keep these sources separate. The rows always sum to the headline total. Without `mode` no `breakdown` is returned.
          */
         get: operations["get_tvl"];
         put?: never;
@@ -133,7 +133,7 @@ export interface paths {
         };
         /**
          * Get the daily aggregate TVL timeseries
-         * @description Returns a fixed trailing 3-month daily series of aggregate Gauntlet TVL. Without `mode` each point's `sources` carry the same three coarse tranches the live `/v1/tvl` totals report — `vault_curation` (every indexed non-Aera vault plus Solana), `aera_v2` and `aera` (Aera V3). Pass `?mode=strategy` for a per-point `sources` breakdown with one entry per curated strategy (`prime_lending`, `balanced_lending`, `frontier_lending`, …), or `?mode=chain` for one entry per chain; indexed vaults that no curated strategy claims roll up under `uncategorized`. `aera` (Aera V3) is a whole entry in either mode, as are `aera_v2` and `solana`, which are read from the `tvl_history` table (populated by the hourly TVL-history job and its backfill) since neither source is indexed. The rest is derived at read time from indexed Envio vault history plus historical USD pricing. Every point carries the same source ids in the same order, and they sum to that point's total, which does not depend on `mode`. A day with no data for a source contributes 0 to that day's total rather than carrying the last known value forward.
+         * @description Returns a fixed trailing 3-month daily series of aggregate Gauntlet TVL. Without `mode` each point's `sources` carry the same three coarse tranches the live `/v1/tvl` totals report: `vault_curation` (indexed non-Aera vaults, Symbiotic and Solana), `aera_v2` and `aera` (Aera V3). Pass `?mode=strategy` for a per-point `sources` breakdown with one entry per curated strategy (`prime_lending`, `balanced_lending`, `frontier_lending`, …), or `?mode=chain` for one entry per chain, or `?mode=protocol` for one entry per tracked vault protocol; indexed vaults that no curated strategy claims roll up under `uncategorized`. Protocol mode combines Aera V2 and V3 as `aera` and names the Solana source `kamino`. Other modes keep `aera` (Aera V3), `aera_v2`, `solana` and `symbiotic` as separate rows. The last three come from the `tvl_history` table. The hourly TVL job writes them. Symbiotic history starts with the first recorded snapshot. The rest is derived at read time from indexed Envio vault history plus historical USD pricing. Every point carries the same source ids in the same order, and they sum to that point's total, which does not depend on `mode`. A day with no data for a source contributes 0 to that day's total rather than carrying the last known value forward.
          *
          *     Served from a cached snapshot that is refreshed off the request path, so no caller pays for a recompute. `meta.data_as_of` is set when the snapshot is past its refresh window and a refresh is running behind the response; it is absent when the series is current.
          *
@@ -809,7 +809,7 @@ export interface components {
          *     from a request means the headline figures only, with no breakdown.
          * @enum {string}
          */
-        TvlBreakdownMode: "chain" | "strategy";
+        TvlBreakdownMode: "chain" | "strategy" | "protocol";
         TvlResponse: {
             data: components["schemas"]["TvlSummary"];
             meta: components["schemas"]["BasicMeta"];
@@ -1299,7 +1299,7 @@ export interface operations {
     get_tvl: {
         parameters: {
             query?: {
-                /** @description Breakdown to return: `chain` or `strategy`. Omit for the headline figures only. */
+                /** @description Breakdown to return: `chain`, `protocol` or `strategy`. Omit for the headline figures only. */
                 mode?: components["schemas"]["TvlBreakdownMode"];
             };
             header?: never;
@@ -1340,7 +1340,7 @@ export interface operations {
     get_tvl_timeseries: {
         parameters: {
             query?: {
-                /** @description Per-point breakdown to return: `chain` or `strategy`. Omit for the daily total only. */
+                /** @description Per-point breakdown to return: `chain`, `protocol` or `strategy`. Omit for the daily total only. */
                 mode?: components["schemas"]["TvlBreakdownMode"];
             };
             header?: never;
