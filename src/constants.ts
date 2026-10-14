@@ -17,6 +17,7 @@ export const CHAIN_NAMES: Record<number, string> = {
   8453: 'base',
   42161: 'arbitrum',
   10: 'optimism',
+  5042: 'arc',
 };
 
 // Approximate 3-day block lookback per chain based on avg block time.
@@ -25,6 +26,7 @@ export const BLOCKS_3_DAYS: Record<number, bigint> = {
   8453: 129_600n,
   42161: 1_036_800n,
   10: 129_600n,
+  5042: 518_400n,
 };
 export const DEFAULT_BLOCKS_3_DAYS = 129_600n;
 
