@@ -43,16 +43,22 @@ jobs:
     steps:
       - name: Checkout repository for push evaluation
         if: github.event_name == 'push'
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           fetch-depth: 2
 
       - name: Resolve publish target
         id: target
         shell: bash
+        env:
+          # workflow_dispatch inputs are passed via the environment so that a
+          # crafted `git_ref`/`dist_tag` value can never be spliced into the
+          # shell script text below (script-injection hardening).
+          INPUT_DIST_TAG: ${{ inputs.dist_tag }}
+          INPUT_GIT_REF: ${{ inputs.git_ref || github.ref }}
         run: |
           event_name="${{ github.event_name }}"
-          dist_tag="${{ inputs.dist_tag }}"
+          dist_tag="${INPUT_DIST_TAG}"
           publish="false"
 
           if [[ "$event_name" == "push" ]]; then
@@ -66,7 +72,7 @@ jobs:
             fi
           fi
 
-          checkout_ref="${{ inputs.git_ref || github.ref }}"
+          checkout_ref="${INPUT_GIT_REF}"
           run_validation="true"
 
           if [[ "$event_name" == "push" ]]; then
@@ -100,6 +106,12 @@ jobs:
         shell: bash
     env:
       NPM_ACCESS: ${{ inputs.npm_access }}
+    # NOTE: job-level `env` is evaluated before any step runs, so values that
+    # come from step outputs (package name/version, checked-out ref) are bound
+    # per step below. All of them are routed through the environment instead of
+    # inline `${{ }}` interpolation into `run:` scripts (script-injection
+    # hardening: package.json content and dispatch inputs stay out of the
+    # shell text).
     outputs:
       artifact_name: ${{ steps.pack.outputs.artifact_name }}
       package_name: ${{ steps.validate.outputs.package_name }}
@@ -107,7 +119,7 @@ jobs:
       checked_out_ref: ${{ steps.checkout_ref.outputs.checked_out_ref }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           ref: ${{ needs.prepare.outputs.checkout_ref }}
           fetch-depth: 2
@@ -129,7 +141,7 @@ jobs:
           echo "checked_out_ref=$checked_out_ref" >> "$GITHUB_OUTPUT"
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
@@ -199,21 +211,26 @@ jobs:
         run: npm pack --dry-run
 
       - name: Run npm publish dry-run
+        env:
+          PREPARE_DIST_TAG: ${{ needs.prepare.outputs.dist_tag }}
         run: |
           npm publish \
             --dry-run \
             --access "$NPM_ACCESS" \
-            --tag "${{ needs.prepare.outputs.dist_tag }}"
+            --tag "$PREPARE_DIST_TAG"
 
       - name: Pack publish artifact
         id: pack
+        env:
+          PKG_NAME: ${{ steps.validate.outputs.package_name }}
+          PKG_VERSION: ${{ steps.validate.outputs.package_version }}
         run: |
           pack_json="$(npm pack --json)"
           tarball_name="$(node -e 'const data = JSON.parse(process.argv[1]); process.stdout.write(data[0].filename);' "$pack_json")"
-          safe_name="${{ steps.validate.outputs.package_name }}"
+          safe_name="${PKG_NAME}"
           safe_name="${safe_name#@}"
           safe_name="${safe_name//\//-}"
-          artifact_name="${safe_name}-${{ steps.validate.outputs.package_version }}-tgz"
+          artifact_name="${safe_name}-${PKG_VERSION}-tgz"
 
           echo "$pack_json"
           echo "tarball_name=$tarball_name" >> "$GITHUB_OUTPUT"
@@ -227,16 +244,21 @@ jobs:
           if-no-files-found: error
 
       - name: Write workflow summary
+        env:
+          PKG_NAME: ${{ steps.validate.outputs.package_name }}
+          PKG_VERSION: ${{ steps.validate.outputs.package_version }}
+          PREPARE_DIST_TAG: ${{ needs.prepare.outputs.dist_tag }}
+          CHECKED_OUT_REF: ${{ steps.checkout_ref.outputs.checked_out_ref }}
         run: |
           {
             echo "## npm publish validation"
             echo
-            echo "- Package: \`${{ steps.validate.outputs.package_name }}\`"
-            echo "- Version: \`${{ steps.validate.outputs.package_version }}\`"
+            echo "- Package: \`${PKG_NAME}\`"
+            echo "- Version: \`${PKG_VERSION}\`"
             echo "- Event: \`${{ github.event_name }}\`"
-            echo "- Dist-tag: \`${{ needs.prepare.outputs.dist_tag }}\`"
+            echo "- Dist-tag: \`${PREPARE_DIST_TAG}\`"
             echo "- Publish requested: \`${{ needs.prepare.outputs.publish }}\`"
-            echo "- Checked out ref: \`${{ steps.checkout_ref.outputs.checked_out_ref }}\`"
+            echo "- Checked out ref: \`${CHECKED_OUT_REF}\`"
             echo "- Artifact: \`${{ steps.pack.outputs.artifact_name }}\`"
             echo "- Live publish environment: \`npm-publish\`"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -255,9 +277,13 @@ jobs:
         shell: bash
     env:
       NPM_ACCESS: ${{ inputs.npm_access || 'public' }}
+      PREPARE_DIST_TAG: ${{ needs.prepare.outputs.dist_tag }}
+      CHECKED_OUT_REF: ${{ needs.validate.outputs.checked_out_ref }}
+      PKG_NAME: ${{ needs.validate.outputs.package_name }}
+      PKG_VERSION: ${{ needs.validate.outputs.package_version }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           ref: ${{ needs.prepare.outputs.checkout_ref }}
 
@@ -268,7 +294,7 @@ jobs:
           path: ./dist-artifact
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
@@ -292,16 +318,17 @@ jobs:
             "$artifact_path" \
             --provenance \
             --access "$NPM_ACCESS" \
-            --tag "${{ needs.prepare.outputs.dist_tag }}"
+            --tag "$PREPARE_DIST_TAG"
 
       - name: Write publish summary
         run: |
           {
             echo "## npm publish release"
             echo
-            echo "- Package: \`${{ needs.validate.outputs.package_name }}\`"
-            echo "- Version: \`${{ needs.validate.outputs.package_version }}\`"
-            echo "- Checked out ref: \`${{ needs.validate.outputs.checked_out_ref }}\`"
-            echo "- Dist-tag: \`${{ needs.prepare.outputs.dist_tag }}\`"
+            echo "- Package: \`${PKG_NAME}\`"
+            echo "- Version: \`${PKG_VERSION}\`"
+            echo "- Checked out ref: \`${CHECKED_OUT_REF}\`"
+            echo "- Dist-tag: \`${PREPARE_DIST_TAG}\`"
             echo "- Environment: \`npm-publish\`"
           } >> "$GITHUB_STEP_SUMMARY"
+```[cite: 21]
