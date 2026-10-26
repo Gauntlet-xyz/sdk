@@ -28,12 +28,44 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/index.d.ts",
+        "default": "./dist/cjs/index.js"
+      }
     },
     "./evm": {
-      "types": "./dist/evm/index.d.ts",
-      "import": "./dist/evm/index.js"
+      "import": {
+        "types": "./dist/evm/index.d.ts",
+        "default": "./dist/evm/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/evm/index.d.ts",
+        "default": "./dist/cjs/evm/index.js"
+      }
+    },
+    "./api": {
+      "import": {
+        "types": "./dist/api/index.d.ts",
+        "default": "./dist/api/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/api/index.d.ts",
+        "default": "./dist/cjs/api/index.js"
+      }
+    },
+    "./privy": {
+      "import": {
+        "types": "./dist/privy/index.d.ts",
+        "default": "./dist/privy/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/privy/index.d.ts",
+        "default": "./dist/cjs/privy/index.js"
+      }
     }
   },
   "files": [
@@ -42,14 +74,15 @@
     "manifest"
   ],
   "scripts": {
-    "build": "tsc --project tsconfig.json",
-    "dev": "tsc --project tsconfig.json --watch",
+    "build": "node scripts/build.mjs",
+    "dev": "node scripts/build.mjs --watch",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint --ext=tsx,ts,js src && echo-cli '✔ No ESLint warnings or errors'",
     "format": "eslint --fix --quiet --ext=tsx,ts,js src && echo-cli '✔ No ESLint warnings or errors'",
     "typecheck": "npx tsc --noEmit",
-    "clean": "rm -rf dist .turbo"
+    "clean": "rm -rf dist .turbo",
+    "test:node": "node --test tests/package.test.mjs"
   },
   "peerDependencies": {
     "viem": ">=2.0.0"
@@ -62,7 +95,8 @@
     "eslint": "^8.57.0",
     "typescript": "~5.6.3",
     "viem": "2.30.1",
-    "vitest": "^4.1.2"
+    "vitest": "^4.1.2",
+    "esbuild": "^0.25.0"
   },
   "engines": {
     "npm": ">=11.5.1",

@@ -16,6 +16,19 @@ yarn add @gauntlet-xyz/sdk viem
 
 > `viem` is a required peer dependency.
 
+## Node.js
+
+The package supports ESM `import` and CommonJS `require` in Node.js.
+Both entry points use the same SDK exports.
+
+```js
+import { GauntletClient } from '@gauntlet-xyz/sdk';
+```
+
+```js
+const { GauntletClient } = require('@gauntlet-xyz/sdk');
+```
+
 ## Quick start
 
 ```ts
