@@ -86,7 +86,7 @@ let steps = await getDepositTx(client, {
   minUnitsOut: quote.minUnitsOut,
 });
 
-if (steps[0]?.tx.type === 'approve') {
+while (steps[0]?.tx.type === 'approve') {
   await sendAndConfirm(steps[0]);
   quote = await getSyncDepositQuote(client, request);
   steps = await getDepositTx(client, {
@@ -95,6 +95,9 @@ if (steps[0]?.tx.type === 'approve') {
     minUnitsOut: quote.minUnitsOut,
   });
 }
+if (steps[0]?.tx.type !== 'deposit') {
+  throw new Error('The transaction builder returned no deposit step.');
+}
 await sendAndConfirm(steps[0]);
 ```
 
@@ -102,7 +105,8 @@ await sendAndConfirm(steps[0]);
 `slippageBps`. `slippageBps` is the basis-point tolerance used to derive `minUnitsOut`; `feeBps` is
 the Instant Supply fee applied to the deposited token amount; `numeraireOut` is the post-fee deposit
 amount converted to the vault's numeraire, for display. The contract enforces `minUnitsOut`. Requote
-after approval so the deposit signature uses the latest reviewed minimum.
+after each approval so the deposit signature uses the latest reviewed minimum. Some tokens require
+an approval of zero before the final approval.
 
 Use `getSyncDepositRate` to read the live Instant Supply fee without an amount, e.g. to show a fee
 caption before the user has typed a deposit amount:

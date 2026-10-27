@@ -48,8 +48,9 @@ export interface EvmDepositParams {
 /**
  * Builds the ordered list of EVM transactions required to deposit into a Gauntlet vault.
  *
- * Returns one or two transactions: an ERC-20 approval (only if the current allowance is
- * insufficient) followed by the deposit or async deposit request. Each transaction is
+ * Returns ordered transactions: ERC-20 approvals (if the allowance is insufficient),
+ * followed by the deposit or async deposit request. Some tokens require an approval
+ * of zero before a new nonzero approval. Each transaction is
  * returned as a `PreparedTx` object ready to be signed and sent.
  *
  * @param client - A configured `GauntletClient` instance with an EVM public client and wallet.
@@ -141,7 +142,7 @@ export async function getDepositTx(
       : vault.vaultAddress;
 
   // NOTE: this could be moved to the buildDeposit level
-  const { sufficient } = await adapter.checkAllowance({
+  const { sufficient, current } = await adapter.checkAllowance({
     publicClient,
     token: token.address,
     owner: account,
@@ -152,14 +153,43 @@ export async function getDepositTx(
   const steps: EvmTxStep[] = [];
 
   if (!sufficient) {
-    steps.push(
-      adapter.buildApproval({
-        token: token.address,
-        spender,
-        amount: params.amount,
-        account,
-      })
-    );
+    const approval = adapter.buildApproval({
+      token: token.address,
+      spender,
+      amount: params.amount,
+      account,
+    });
+    if (current > 0n && params.amount > 0n) {
+      try {
+        await publicClient.estimateContractGas({
+          address: approval.address,
+          abi: approval.abi,
+          functionName: 'approve',
+          args: approval.args,
+          account,
+        });
+      } catch (approvalError) {
+        const reset = adapter.buildApproval({
+          token: token.address,
+          spender,
+          amount: 0n,
+          account,
+        });
+        try {
+          await publicClient.estimateContractGas({
+            address: reset.address,
+            abi: reset.abi,
+            functionName: 'approve',
+            args: reset.args,
+            account,
+          });
+        } catch {
+          throw approvalError;
+        }
+        steps.push(reset);
+      }
+    }
+    steps.push(approval);
   }
 
   const depositSteps = await adapter.buildDeposit({
