@@ -135,7 +135,7 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       - name: Upgrade npm CLI
-        run: npm install --global npm@11.5.1
+        run: npm install --global npm@11.6.0
 
       - name: Assert npm CLI version
         run: |
@@ -143,13 +143,13 @@ jobs:
           echo "npm_version=$npm_version"
           node -e '
             const actual = process.argv[1].split(".").map(Number);
-            const minimum = [11, 5, 1];
+            const minimum = [11, 6, 0];
             for (let i = 0; i < minimum.length; i += 1) {
               const lhs = actual[i] ?? 0;
               const rhs = minimum[i];
               if (lhs > rhs) process.exit(0);
               if (lhs < rhs) {
-                console.error(`npm ${process.argv[1]} is below required minimum 11.5.1`);
+                console.error(`npm ${process.argv[1]} is below required minimum 11.6.0`);
                 process.exit(1);
               }
             }
@@ -274,7 +274,7 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       - name: Upgrade npm CLI
-        run: npm install --global npm@11.5.1
+        run: npm install --global npm@11.6.0
 
       - name: Assert publish artifact count
         run: |
