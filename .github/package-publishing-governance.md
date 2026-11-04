@@ -1,54 +1,66 @@
 # Package Publishing Governance
 
-This document covers the GitHub-side controls that are required in addition to the workflow implementation.
+These settings form part of the release boundary.
+Repository administrators must configure them outside Git.
+The workflow checks the required settings before publication.
 
-## CODEOWNERS
+## Code owners and main
 
-The repo should use a root `CODEOWNERS` file to enforce review requirements on package publishing controls.
+`.github/CODEOWNERS` assigns review to `@rdaq` and `@paul-vijender`.
+That location survives the monorepo sync.
+GitHub accepts one listed owner's approval as the code owner review.
+It does not require both listed owners automatically.
 
-Required owners for package publish governance changes:
+Create an active branch ruleset for `main` with these requirements:
 
-- `@rdaq`
-- `@paul-vijender`
-
-These owners should cover:
-
-- `.github/workflows/npm-publish-package.yml`
-- `.github/package-publishing*.md`
-- `package.json`
-
-## Branch Protection / Rulesets
-
-GitHub branch protection is configured outside git. Apply a ruleset that covers:
-
-- `main`
-- `version-bump/*`
-
-Required settings:
-
-1. Require pull requests before merge.
-2. Require approvals before merge.
+1. Require a pull request for every change.
+2. Require at least two approvals.
 3. Require code owner review.
-4. Require the npm publish validation workflow to pass before merge.
-5. Disallow direct pushes for non-admin users.
+4. Dismiss approvals after a new push.
+5. Require the `Validate release artifact` check.
+6. Block force pushes and branch deletion.
+7. Remove bypass grants that permit unreviewed source or workflow changes.
 
-## Version Bump PR Reviewers
+The live verifier checks active ruleset requirements for approval count, code owners, and stale approvals.
+The ruleset must enforce those requirements; a disabled or evaluation-only ruleset does not satisfy the check.
+See [GitHub rules for a branch](https://docs.github.com/en/rest/repos/rules#get-rules-for-a-branch).
 
-For version bump pull requests, require both:
+The current monorepo sync pushes directly to `main`.
+These rules must reject an unreviewed sync push.
+Move that sync to a reviewed pull request before enabling automatic updates under this policy.
+Do not grant the sync App a review bypass.
 
-- `@rdaq`
-- `@paul-vijender`
+## Release environment
 
-If GitHub rulesets cannot target named individuals directly, use CODEOWNERS on `package.json` and release-control files, then require code owner review in the branch ruleset.
+Configure the `npm-publish` environment as follows:
 
-Version bumps should be merged through PRs into `main`; that merge is the deployment trigger for npm publish.
+1. Add the release maintainers as required reviewers.
+2. Enable prevention of self-review.
+3. Select explicit deployment branches and tags.
+4. Add exactly one branch rule named `main`.
+5. Add no tag rule or wildcard branch rule.
+6. Disable administrator bypass where the repository plan supports that control.
+7. Store no long-lived npm publication token.
 
-## GitHub Environment
+Do not use the "protected branches only" option.
+GitHub permits every branch under that option when no branches have protection.
+The verifier requires an explicit `main` branch rule instead.
+An unreadable or incomplete policy response stops publication.
+See [GitHub environment protection](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments).
 
-Protect the `npm-publish` GitHub Environment:
+## npm trusted publisher
 
-1. Require reviewers before deployment approval.
-2. Limit environment use to `.github/workflows/npm-publish-package.yml`.
-3. Do not store long-lived npm publish tokens in the environment.
-4. Use the environment only as the approval boundary for live publishes.
-5. Do not create alternate publish environments. The workflow hardcodes `npm-publish` to avoid bypassing protection through workflow input.
+Configure these exact values in npm:
+
+| Field | Value |
+| --- | --- |
+| Owner | `Gauntlet-xyz` |
+| Repository | `sdk` |
+| Workflow filename | `npm-publish-package.yml` |
+| Environment | `npm-publish` |
+
+The environment field is required for this policy.
+Without it, a modified branch workflow could request an OIDC token outside the protected environment.
+Revoke obsolete publication tokens and remove unused trusted publishers.
+Confirm the environment binding through npm package settings before the next release.
+GitHub Actions cannot inspect that npm setting through its repository token.
