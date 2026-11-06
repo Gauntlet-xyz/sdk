@@ -4,31 +4,25 @@ These settings form part of the release boundary.
 Repository administrators must configure them outside Git.
 The workflow checks the required settings before publication.
 
-## Code owners and main
+## Direct sync and main
 
-`.github/CODEOWNERS` assigns review to `@rdaq` and `@paul-vijender`.
-That location survives the monorepo sync.
-GitHub accepts one listed owner's approval as the code owner review.
-It does not require both listed owners automatically.
+The monorepo sync pushes directly to SDK `main` through the sync App.
+The release verifier does not require a branch ruleset, pull request approvals, or code owner approval.
+It does not read the GitHub branch rules API.
+Repository rules must permit the sync App to push directly.
 
-Create an active branch ruleset for `main` with these requirements:
+Do not require pull requests or approval counts on SDK `main` without an explicit bypass for the sync App.
+Required status checks must also permit the sync App to push before validation runs.
+The release workflow validates every push to `main`, including source-only syncs.
+Those checks run after the push; they do not prevent that push.
 
-1. Require a pull request for every change.
-2. Require at least two approvals.
-3. Require code owner review.
-4. Dismiss approvals after a new push.
-5. Require the `Validate release artifact` check.
-6. Block force pushes and branch deletion.
-7. Remove bypass grants that permit unreviewed source or workflow changes.
+Treat repository write access and the sync App credentials as release authority.
+Limit that access to trusted maintainers and the sync App.
+Direct writers can change source code and release controls without a pull request review.
+Deployment approval remains required before publication.
 
-The live verifier checks active ruleset requirements for approval count, code owners, and stale approvals.
-The ruleset must enforce those requirements; a disabled or evaluation-only ruleset does not satisfy the check.
-See [GitHub rules for a branch](https://docs.github.com/en/rest/repos/rules#get-rules-for-a-branch).
-
-The current monorepo sync pushes directly to `main`.
-These rules must reject an unreviewed sync push.
-Move that sync to a reviewed pull request before enabling automatic updates under this policy.
-Do not grant the sync App a review bypass.
+`.github/CODEOWNERS` suggests `@rdaq` and `@paul-vijender` for optional pull request reviews.
+The sync preserves that file and the release controls under `.github`.
 
 ## Release environment
 
