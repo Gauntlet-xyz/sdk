@@ -120,13 +120,6 @@ export function requireEnvironmentProtection(environment, policies) {
   assert.equal(policies.branch_policies[0]?.type, 'branch');
 }
 
-export function requireMainReviewRules(rules) {
-  const reviews = rules.filter((rule) => rule.type === 'pull_request').map((rule) => rule.parameters);
-  assert(reviews.some((review) => review.required_approving_review_count >= 2), 'Main needs at least two pull request approvals');
-  assert(reviews.some((review) => review.require_code_owner_review === true), 'Main must require code owner review');
-  assert(reviews.some((review) => review.dismiss_stale_reviews_on_push === true), 'Main must dismiss stale approvals');
-}
-
 async function github(path) {
   const response = await fetch(`https://api.github.com/repos/Gauntlet-xyz/sdk/${path}`, {
     headers: { authorization: `Bearer ${process.env.GH_TOKEN}`, accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' },
@@ -189,12 +182,10 @@ async function main(command) {
     assert.equal(process.env.GITHUB_REPOSITORY, 'Gauntlet-xyz/sdk');
     assert.match(process.env.RELEASE_SHA, SHA);
     assert.equal(process.env.RELEASE_SHA, process.env.GITHUB_SHA);
-    const [environment, policies, rules] = await Promise.all([
+    const [environment, policies] = await Promise.all([
       github('environments/npm-publish'), github('environments/npm-publish/deployment-branch-policies?per_page=100'),
-      github('rules/branches/main'),
     ]);
     requireEnvironmentProtection(environment, policies);
-    requireMainReviewRules(rules);
     assert.match(process.env.BEFORE_SHA, SHA);
     const before = JSON.parse(git('show', `${process.env.BEFORE_SHA}:package.json`)).version;
     requireNewStableVersion(process.env.PACKAGE_VERSION, before);

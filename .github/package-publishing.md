@@ -4,17 +4,37 @@ The SDK publishes through GitHub Actions and npm trusted publishing.
 
 ## Release path
 
-1. Open a pull request with a stable version increase in `package.json`.
-2. Update the release lockfile when package dependencies change.
-3. Review the validation result and merge the pull request into `main`.
-4. Approve the `npm-publish` deployment after checking its commit and artifact.
-5. Check npm provenance after publication.
+1. Confirm that the intended monorepo sync reached SDK `main` and passed `Validate release artifact`.
+2. Increase the stable version in the public SDK repository's `package.json`.
+3. Update the release lockfile when package dependencies change.
+4. Push the version change to `main`, directly or through a pull request.
+5. Check the validation result for that exact commit.
+6. Approve the `npm-publish` deployment after checking its commit and artifact.
+7. Check npm provenance after publication.
 
 The workflow resolves the source to a full commit SHA before it builds the package.
 It compares the version with the commit before the push.
 Publication also requires a version above the current npm `latest` tag.
 Live releases use stable versions and the `latest` tag only.
 Rollbacks, unchanged versions, and prereleases cannot move that tag.
+
+## Monorepo sync
+
+The monorepo sync pushes directly to SDK `main`.
+Publication does not require pull request approvals or branch review rules.
+Repository rules must permit the sync App to push directly.
+
+Every push to `main` validates the package, even when `package.json` does not change.
+A sync that preserves the version only validates; it cannot publish.
+The sync preserves the public SDK version instead of copying the monorepo version.
+Release versions must change in the public SDK repository.
+
+The sync preserves `.github`, including the release lockfile, tests, and workflow.
+It preserves `package.json` except for selected build metadata.
+It copies package exports, the build scripts, the package test script, and the `esbuild` dependency from the monorepo.
+Other dependency changes require an explicit update to the public package manifest and release lockfile.
+If synced dependency requirements differ from the lockfile, `npm ci` stops validation.
+Update the release lockfile before a version increase when synced metadata changes dependency requirements.
 
 Pull requests and manual dispatches only validate packages.
 They do not run the publication job.
@@ -28,7 +48,7 @@ The selected ref must contain the release controls and a matching release lockfi
 ## Dependency and artifact checks
 
 The release files live under `.github/release` because the monorepo sync preserves `.github`.
-The sync preserves `package.json` but replaces other files at the repository root.
+The sync preserves the release version and replaces other files at the repository root outside `.github`.
 Do not move the release lockfile or release tests to that root.
 
 The workflow uses Node 22.23.4 and npm 11.6.0.
@@ -68,7 +88,9 @@ A lockfile mismatch stops `npm ci`.
 ## Required external controls
 
 Apply the settings in [Package Publishing Governance](./package-publishing-governance.md) before the next release.
-The live verifier reads GitHub settings and stops publication when required review or branch controls are absent.
+The live verifier checks deployment approval and the environment's explicit `main` branch policy.
+It stops publication when those controls are absent or unreadable.
+It does not require branch review rules.
 A pull request cannot apply npm settings or GitHub environment protection.
 
 Bind npm trusted publishing to `Gauntlet-xyz/sdk`, `npm-publish-package.yml`, and environment `npm-publish`.

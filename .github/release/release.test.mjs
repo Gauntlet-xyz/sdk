@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
-import { PACKAGE, REGISTRY, prepare, requireEnvironmentProtection, requireMainReviewRules, requireNewStableVersion, requireTag, verifyArchive } from './release.mjs';
+import { PACKAGE, REGISTRY, prepare, requireEnvironmentProtection, requireNewStableVersion, requireTag, verifyArchive } from './release.mjs';
 
 const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const pkg = (version) => ({
@@ -35,10 +35,15 @@ function history(t) {
   return { directory, commit };
 }
 
-test('release selection stays on the triggering commit after main advances', (t) => {
+test('direct sync validates without publication and release selection stays on the triggering commit', (t) => {
   const { directory, commit } = history(t);
   const before = commit('1.0.0');
   const selected = commit('1.1.0');
+  const syncedManifest = JSON.stringify({ version: '1.1.0', vaults: [{ name: 'synced' }] });
+  writeFileSync(join(directory, 'manifest/vaults.json'), syncedManifest);
+  git(directory, 'add', '.');
+  git(directory, 'commit', '-m', 'sync: update source without a version change');
+  const synced = git(directory, 'rev-parse', 'HEAD');
   commit('1.2.0');
   const previousDirectory = process.cwd();
   process.chdir(directory);
@@ -47,6 +52,15 @@ test('release selection stays on the triggering commit after main advances', (t)
     assert.equal(target.source_sha, selected);
     assert.equal(target.package_version, '1.1.0');
     assert.equal(target.publish, 'true');
+    const sync = prepare({ EVENT_NAME: 'push', SOURCE_REF: 'refs/heads/main', SOURCE_SHA: synced, BEFORE_SHA: selected });
+    assert.equal(sync.source_sha, synced);
+    assert.equal(sync.package_version, '1.1.0');
+    assert.equal(sync.manifest_sha256, hash(syncedManifest));
+    assert.equal(sync.publish, 'false');
+    const next = prepare({ EVENT_NAME: 'push', SOURCE_REF: 'refs/heads/main', SOURCE_SHA: git(directory, 'rev-parse', 'HEAD'), BEFORE_SHA: synced });
+    assert.equal(next.package_version, '1.2.0');
+    assert.equal(next.publish, 'true');
+    assert.equal(prepare({ EVENT_NAME: 'pull_request', SOURCE_SHA: synced }).publish, 'false');
     const manual = prepare({ EVENT_NAME: 'workflow_dispatch', SOURCE_SHA: selected, REQUESTED_REF: selected });
     assert.equal(manual.publish, 'false');
     assert.throws(() => prepare({ EVENT_NAME: 'workflow_dispatch', SOURCE_SHA: selected, REQUESTED_REF: `${selected}\npublish=true` }));
@@ -114,18 +128,12 @@ test('archive verification binds package identity, source manifest, exports, and
   assert.throws(() => verifyArchive(malicious, expected), /publish configuration/);
 });
 
-test('publication requires independent review and an exact main branch policy', () => {
+test('publication requires deployment approval and an exact main branch policy', () => {
   const environment = {
     protection_rules: [{ type: 'required_reviewers', prevent_self_review: true, reviewers: [{ type: 'User' }] }],
     deployment_branch_policy: { custom_branch_policies: true, protected_branches: false },
   };
   const policies = { total_count: 1, branch_policies: [{ name: 'main', type: 'branch' }] };
-  const rules = [{ type: 'pull_request', parameters: {
-    required_approving_review_count: 2, require_code_owner_review: true, dismiss_stale_reviews_on_push: true,
-  } }];
-  requireMainReviewRules(rules);
-  assert.throws(() => requireMainReviewRules([]));
-  assert.throws(() => requireMainReviewRules([{ ...rules[0], parameters: { ...rules[0].parameters, required_approving_review_count: 1 } }]));
   requireEnvironmentProtection(environment, policies);
   assert.throws(() => requireEnvironmentProtection({ ...environment, protection_rules: [] }, policies));
   assert.throws(() => requireEnvironmentProtection({ ...environment, protection_rules: [{ ...environment.protection_rules[0], prevent_self_review: false }] }, policies));
