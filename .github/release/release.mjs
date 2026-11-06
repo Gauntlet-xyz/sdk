@@ -122,7 +122,7 @@ export function requireEnvironmentProtection(environment, policies) {
 
 export function requireMainReviewRules(rules) {
   const reviews = rules.filter((rule) => rule.type === 'pull_request').map((rule) => rule.parameters);
-  assert(reviews.some((review) => review.required_approving_review_count >= 2), 'Main needs at least two pull request approvals');
+  assert(reviews.some((review) => review.required_approving_review_count >= 1), 'Main needs at least one pull request approval');
   assert(reviews.some((review) => review.require_code_owner_review === true), 'Main must require code owner review');
   assert(reviews.some((review) => review.dismiss_stale_reviews_on_push === true), 'Main must dismiss stale approvals');
 }

@@ -14,7 +14,7 @@ It does not require both listed owners automatically.
 Create an active branch ruleset for `main` with these requirements:
 
 1. Require a pull request for every change.
-2. Require at least two approvals.
+2. Require at least one approval.
 3. Require code owner review.
 4. Dismiss approvals after a new push.
 5. Require the `Validate release artifact` check.

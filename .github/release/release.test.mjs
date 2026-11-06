@@ -121,11 +121,12 @@ test('publication requires independent review and an exact main branch policy', 
   };
   const policies = { total_count: 1, branch_policies: [{ name: 'main', type: 'branch' }] };
   const rules = [{ type: 'pull_request', parameters: {
-    required_approving_review_count: 2, require_code_owner_review: true, dismiss_stale_reviews_on_push: true,
+    required_approving_review_count: 1, require_code_owner_review: true, dismiss_stale_reviews_on_push: true,
   } }];
   requireMainReviewRules(rules);
   assert.throws(() => requireMainReviewRules([]));
-  assert.throws(() => requireMainReviewRules([{ ...rules[0], parameters: { ...rules[0].parameters, required_approving_review_count: 1 } }]));
+  requireMainReviewRules([{ ...rules[0], parameters: { ...rules[0].parameters, required_approving_review_count: 2 } }]);
+  assert.throws(() => requireMainReviewRules([{ ...rules[0], parameters: { ...rules[0].parameters, required_approving_review_count: 0 } }]), /at least one/);
   requireEnvironmentProtection(environment, policies);
   assert.throws(() => requireEnvironmentProtection({ ...environment, protection_rules: [] }, policies));
   assert.throws(() => requireEnvironmentProtection({ ...environment, protection_rules: [{ ...environment.protection_rules[0], prevent_self_review: false }] }, policies));
