@@ -8,13 +8,14 @@ export { encodeBuilderCode } from './erc8021';
 export type PreparedPayloadWithAttribution = {
   type: string;
   to: Address;
+  chainId: number;
   data: Hex;
   account?: Address;
 };
 
 export type PreparedTx = {
   payload: PreparedPayloadWithAttribution;
-  tx: TxStep;
+  tx: TxStep & { chainId: number };
 };
 
 /**
@@ -38,7 +39,8 @@ export async function buildAttribution(client: GauntletClient): Promise<Hex> {
 
 export async function encodeTransactionWithAttribution(
   client: GauntletClient,
-  transaction: TxStep
+  transaction: TxStep,
+  chainId: number
 ): Promise<PreparedTx> {
   const customAttribution = await buildAttribution(client);
   const encodedTx = encodeFunctionData({
@@ -52,10 +54,12 @@ export async function encodeTransactionWithAttribution(
       type: transaction.type,
       account: transaction.account,
       to: transaction.address,
+      chainId,
       data: encodedTxWithAttribution,
     },
     tx: {
       ...transaction,
+      chainId,
       attribution: customAttribution,
     },
   };

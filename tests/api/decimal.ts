@@ -28,8 +28,8 @@ describe('decimalToBigInt', () => {
   });
 
   it('rejects malformed values', () => {
-    for (const bad of ['', 'abc', '1e18', '1.', '.5', '1,000', 'NaN']) {
-      expect(() => decimalToBigInt(bad, 6), bad).toThrow(InvalidDecimalError);
+    for (const bad of [[100], 100, '', 'abc', '1e18', '1.', '.5', '1,000', 'NaN']) {
+      expect(() => decimalToBigInt(bad as string, 6), String(bad)).toThrow(InvalidDecimalError);
     }
   });
 });

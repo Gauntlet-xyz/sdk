@@ -255,6 +255,7 @@ export async function getSyncWithdrawQuote(
   client: GauntletClient,
   params: SyncWithdrawQuoteParams
 ): Promise<SyncWithdrawQuote> {
+  params = structuredClone(params);
   validateSyncWithdrawQuoteParams(params);
 
   if (

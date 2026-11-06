@@ -57,6 +57,7 @@ export type AdapterWithdrawParams = {
   maxPriceAge?: bigint;
   aeraRuntime?: AeraRuntimeContracts;
   syncWithdrawQuote?: SyncWithdrawQuoteBounds;
+  maxShares?: bigint;
 } & (
   | { shares: bigint; amount?: never; entireAmount?: never }
   | { amount: bigint; shares?: never; entireAmount?: never }

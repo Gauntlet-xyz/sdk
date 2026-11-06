@@ -1,7 +1,13 @@
+import { parseApiVaultId } from './caip';
+import { GauntletApiError } from './errors';
 import type { components } from './generated';
 import { apiGet, type GauntletApiConfig, type QueryParams } from './http';
 
 type Schemas = components['schemas'];
+
+function activityError(message: string, code?: string): GauntletApiError {
+  return new GauntletApiError({ status: 200, path: '/v1/users/activity', message, code });
+}
 
 export type UserActivity = Schemas['UserActivity'];
 export type UserActivityResponse = Schemas['UserActivityResponse'];
@@ -248,11 +254,40 @@ export class GauntletApi {
     walletAddress: string,
     options: Omit<ActivityOptions, 'next'> = {}
   ): AsyncGenerator<UserActivity> {
+    const vault = options.vaultId === undefined ? undefined : parseApiVaultId(options.vaultId);
+    // Gaia pages on (timestamp, logIndex), which rows do not expose. Rows
+    // can repeat legitimately inside one transaction, so the boundary check
+    // is the timestamp order.
+    const descending = (options.order ?? 'desc') === 'desc';
+    let lastTimestamp: number | undefined;
     let next: string | undefined;
+    const cursors = new Set<string>();
     do {
       const page = await this.activity(walletAddress, { ...options, next });
-      yield* page.data;
+      if (page.meta.partial_errors?.length) {
+        throw activityError('The activity response is incomplete', 'INCOMPLETE_ACTIVITY');
+      }
+      for (const row of page.data) {
+        if (vault !== undefined) {
+          const rowVault = parseApiVaultId(row.vault_id);
+          if (rowVault.chainId !== vault.chainId || rowVault.address !== vault.address) {
+            throw activityError('The activity vault does not match the request');
+          }
+        }
+        if (
+          lastTimestamp !== undefined &&
+          (descending ? row.block_timestamp > lastTimestamp : row.block_timestamp < lastTimestamp)
+        ) {
+          throw activityError('The activity rows are out of order');
+        }
+        lastTimestamp = row.block_timestamp;
+        yield row;
+      }
       next = page.meta.next_cursor ?? undefined;
+      if (next !== undefined) {
+        if (cursors.has(next)) throw activityError('The activity cursor repeats');
+        cursors.add(next);
+      }
     } while (next);
   }
 

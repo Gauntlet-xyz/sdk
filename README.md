@@ -203,6 +203,26 @@ only the primary deployment; that response also includes its native-token TVL.
 
 Vault ids on the API are CAIP-10 (`"{chainId}:{address}"`); convert to and from manifest vault ids with `apiVaultIdFromVaultId` / `vaultIdFromApiVaultId`. Monetary values are human-unit decimal strings; convert exactly with `decimalToBigInt` / `sharesToBigInt` (throws instead of rounding).
 
+### Transaction and balance safety
+
+Prepared transactions include `chainId` in both `payload` and `tx`.
+Check the account and chain before signing each step.
+Rebuild the steps after a wallet account or chain change.
+
+For exact-token withdrawals derived from `shareSafeTokensOut`, pass `maxShares: quote.shares` to `getWithdrawTx`.
+This cap remains effective after a rate change.
+The contract rejects a withdrawal that needs more shares.
+
+`getUserCurrentBalance` reads balances, conversions, and request state at one block.
+It filters pending requests by the selected token.
+A multi-asset deployment requires `assetSymbol`, as `getDepositTx` does.
+The default scan covers the configured request lifetime, with a minimum of three days.
+Use `fromBlock` to include older requests, including expired requests that still hold escrow.
+A vault with several deployments also requires `chainId` with `fromBlock`.
+Each result includes `blockNumber` and `fromBlock` to identify its scope.
+`pendingWithdraw` reports the gross current token value of escrowed shares.
+It does not promise the settlement payout after multipliers or solver tips.
+
 ### Activity flows
 
 `getActivityFlows` stitches the raw activity log into lifecycle-aware flows — Aera async requests are paired with their settlement or refund via `request_hash`, replacing client-side event-log scanning:
@@ -214,8 +234,15 @@ const flows = await getActivityFlows(client.api, wallet);
 // [{ kind: 'deposit', status: 'pending', requestedAt, settledAt, assets, shares, txHashes, ... }]
 
 // After submitting a requestDeposit / requestRedeem transaction:
-const settled = await waitForRequestSettlement(client.api, wallet, requestHash);
+const settled = await waitForRequestSettlement(client.api, wallet, requestHash, { requestTxHash });
 ```
+
+Settlement polling requires `requestTxHash`, the transaction hash of the submitted request.
+This separates a new request from an earlier request with the same correlation hash.
+Activity helpers reject incomplete pages, rows out of timestamp order, repeated cursors, and invalid lifecycle deltas.
+Rows carry no event index, so identical rows in one transaction stay separate rows.
+Position history rejects mixed asset denominations and unmatched escrow.
+The API client rejects redirects to prevent credential forwarding.
 
 ### Position history
 

@@ -82,7 +82,7 @@ function v2BalanceClient(address: Address): PublicClient {
           throw new Error(`Unexpected readContract call: ${functionName}`);
       }
     },
-    getBlockNumber: async () => 1_000n,
+    getBlock: async ({ blockNumber = 1_000n } = {}) => ({ number: blockNumber, timestamp: blockNumber * 2n }),
     getContractEvents: async ({
       eventName,
       args,
@@ -162,6 +162,11 @@ describe('getUserCurrentBalance', () => {
 
       const client = new GauntletClient({ evmClients: { [base.id]: publicClient }, wallet: walletClient });
 
+      const manifest = structuredClone(await client.manifest);
+      const deployment = manifest.vaults.find((vault) => vault.vaultId === VAULT_ID)!.deployments[0];
+      deployment.expirationDays = 90;
+      client.setManifest(manifest);
+
       // ── Deposit: approve then requestDeposit ─────────────────────────────────
 
       // First call returns approve + requestDeposit; execute approve only.
@@ -211,6 +216,15 @@ describe('getUserCurrentBalance', () => {
       expect(afterRequest[0].pendingDeposit).toBe(DEPOSIT_AMOUNT);
       expect(afterRequest[0].balance).toBe(0n);
       expect(afterRequest[0].pendingWithdraw).toBe(0n);
+
+      await testClient.increaseTime({ seconds: 4 * 86400 });
+      await testClient.mine({ blocks: 1 });
+      const [olderRequest] = await getUserCurrentBalance(client, {
+        vaultId: VAULT_ID, address: account.address, chainId: base.id,
+      });
+      expect(olderRequest.pendingDeposit).toBe(DEPOSIT_AMOUNT);
+      expect(olderRequest.fromBlock).toBeLessThan(depositReceipt.blockNumber);
+      expect(olderRequest.blockNumber).toBeGreaterThan(depositReceipt.blockNumber);
 
       // ── Solve deposit ─────────────────────────────────────────────────────────
 
@@ -399,6 +413,8 @@ describe('getUserCurrentBalance', () => {
 
     expect(result).toEqual([
       {
+        blockNumber: 1_000n,
+        fromBlock: 0n,
         chain: 'base',
         chainId: base.id,
         token: USDC_ADDRESS,

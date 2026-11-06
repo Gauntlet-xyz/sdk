@@ -39,6 +39,7 @@ export async function apiGet<T>(
 
   const fetchImpl = config.fetch ?? fetch;
   const response = await fetchImpl(url, {
+    redirect: 'error',
     headers: {
       accept: 'application/json',
       ...(config.apiKey ? { 'x-api-key': config.apiKey } : {}),

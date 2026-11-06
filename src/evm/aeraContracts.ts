@@ -17,8 +17,6 @@ import { MAX_BPS } from '../constants';
 import { ContractVersion, type EvmVaultDeployment } from './types';
 import { readAtBlock } from './aeraContracts/readOptions';
 
-const contractVersionCache = new Map<string, ContractVersion>();
-
 const contractVersionAbi = [
   {
     type: 'function',
@@ -81,10 +79,6 @@ export function applySlippageUp(amount: bigint, slippageBps: number): bigint {
   return (amount * (MAX_BPS + BigInt(slippageBps)) + MAX_BPS - 1n) / MAX_BPS;
 }
 
-function contractVersionCacheKey(client: PublicClient, address: Address): string {
-  return `${client.chain?.id ?? 'unknown'}:${address.toLowerCase()}`;
-}
-
 function isVersionUnavailableError(error: unknown): boolean {
   if (!(error instanceof ContractFunctionExecutionError) || error.functionName !== 'version') {
     return false;
@@ -122,15 +116,35 @@ export function getMultiDepositorVault<T extends Client>(
   });
 }
 
+// Latest-block versions per client. Historical reads and failed reads are not cached.
+const latestContractVersions = new WeakMap<PublicClient, Map<string, ContractVersion>>();
+
 export async function resolveContractVersion(
   client: PublicClient,
   address: Address,
   options: AeraReadOptions = {}
 ): Promise<ContractVersion> {
-  const cacheKey = contractVersionCacheKey(client, address);
-  const cached = contractVersionCache.get(cacheKey);
-  if (cached) return cached;
+  if (options.blockNumber !== undefined) return readContractVersion(client, address, options);
 
+  let versions = latestContractVersions.get(client);
+  if (versions === undefined) {
+    versions = new Map();
+    latestContractVersions.set(client, versions);
+  }
+  const key = address.toLowerCase();
+  const cached = versions.get(key);
+  if (cached !== undefined) return cached;
+
+  const version = await readContractVersion(client, address, options);
+  versions.set(key, version);
+  return version;
+}
+
+async function readContractVersion(
+  client: PublicClient,
+  address: Address,
+  options: AeraReadOptions
+): Promise<ContractVersion> {
   try {
     const versionString = await client.readContract({
       address,
@@ -138,14 +152,15 @@ export async function resolveContractVersion(
       functionName: 'version',
       ...readAtBlock(options),
     });
-    const version = versionString.startsWith('2.') ? ContractVersion.V2 : ContractVersion.V1;
-    contractVersionCache.set(cacheKey, version);
-
-    return version;
+    if (!/^[12]\./.test(versionString)) {
+      throw new UnsupportedFeatureError(`Aera: unsupported contract version ${versionString}`);
+    }
+    return versionString.startsWith('2.') ? ContractVersion.V2 : ContractVersion.V1;
   } catch (error) {
     if (!isVersionUnavailableError(error)) throw error;
 
-    contractVersionCache.set(cacheKey, ContractVersion.V1);
+    const code = await client.getCode({ address, ...readAtBlock(options) });
+    if (code === undefined || code === '0x') throw error;
     return ContractVersion.V1;
   }
 }

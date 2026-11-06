@@ -1,3 +1,4 @@
+import { activityLifecycles, orderActivityRows } from './activityRows';
 import { GauntletSDKError } from '../errors';
 import type { ActivityOptions, GauntletApi, TokenRef, UserActivity } from './client';
 import { decimalToBigInt, sharesToBigInt } from './decimal';
@@ -44,8 +45,8 @@ const PENDING_TYPES = new Set(['deposit_pending', 'withdraw_pending']);
 const REFUNDED_TYPES = new Set(['deposit_refunded', 'withdraw_refunded']);
 
 function flowKind(rowType: string): ActivityFlowKind {
-  if (rowType.startsWith('deposit')) return 'deposit';
-  if (rowType.startsWith('withdraw')) return 'withdraw';
+  if (['deposit', 'deposit_pending', 'deposit_refunded'].includes(rowType)) return 'deposit';
+  if (['withdraw', 'withdraw_pending', 'withdraw_refunded'].includes(rowType)) return 'withdraw';
   if (rowType === 'transfer_in' || rowType === 'transfer_out') return rowType;
   throw new GauntletSDKError(`Unknown activity row type "${rowType}"`);
 }
@@ -88,19 +89,10 @@ function toAssetAmount(rows: UserActivity[]): AssetAmount {
  * `request_hash`. Flows are returned newest-first (by the flow's latest row).
  */
 export function stitchActivityFlows(rows: UserActivity[]): ActivityFlow[] {
-  const groups = new Map<string, UserActivity[]>();
-  for (const [index, row] of rows.entries()) {
-    // Rows without a request_hash are standalone sync flows: each one is its
-    // own group, so two same-type events in one transaction (e.g. a multicall
-    // doing two deposits) stay two flows.
-    const key = row.request_hash ?? `row:${index}`;
-    const group = groups.get(key);
-    if (group) group.push(row);
-    else groups.set(key, [row]);
-  }
+  const groups = activityLifecycles(orderActivityRows(rows));
 
   const flows: ActivityFlow[] = [];
-  for (const group of groups.values()) {
+  for (const group of groups) {
     group.sort((a, b) => a.block_timestamp - b.block_timestamp);
     const pendingRow = group.find((r) => PENDING_TYPES.has(r.type)) ?? null;
     const terminalRow = group.find((r) => !PENDING_TYPES.has(r.type)) ?? null;
@@ -183,6 +175,8 @@ export async function getActivityFlows(
 }
 
 export interface WaitForSettlementOptions {
+  /** Transaction hash of the submitted request. Prevents reuse of an earlier settlement. */
+  requestTxHash: string;
   /** CAIP-10 vault id — narrows polling to one vault's activity. */
   vaultId?: string;
   /** Polling interval. Defaults to 5s. */
@@ -200,15 +194,24 @@ export async function waitForRequestSettlement(
   api: GauntletApi,
   walletAddress: string,
   requestHash: string,
-  options: WaitForSettlementOptions = {}
+  options: WaitForSettlementOptions
 ): Promise<ActivityFlow> {
+  if (typeof options?.requestTxHash !== 'string' || options.requestTxHash.length === 0) {
+    throw new GauntletSDKError(
+      'Settlement polling requires the submitted request transaction hash'
+    );
+  }
   const pollIntervalMs = options.pollIntervalMs ?? 5_000;
   const timeoutMs = options.timeoutMs ?? 600_000;
   const deadline = Date.now() + timeoutMs;
 
   for (;;) {
     const flows = await getActivityFlows(api, walletAddress, { vaultId: options.vaultId });
-    const flow = flows.find((f) => f.requestHash === requestHash);
+    const flow = flows.find(
+      (f) =>
+        f.requestHash === requestHash &&
+        f.txHashes.some((hash) => hash.toLowerCase() === options.requestTxHash.toLowerCase())
+    );
     if (flow && flow.status !== 'pending') return flow;
 
     if (Date.now() + pollIntervalMs > deadline) {

@@ -95,6 +95,7 @@ export async function getSyncDepositQuote(
   client: GauntletClient,
   params: SyncDepositQuoteParams
 ): Promise<SyncDepositQuote> {
+  params = structuredClone(params);
   const slippageBps = params.slippageBps ?? DEFAULT_BPS;
   if (!Number.isInteger(slippageBps) || slippageBps < 0 || slippageBps > Number(MAX_BPS)) {
     throw new InvalidSlippageBPSError(slippageBps);

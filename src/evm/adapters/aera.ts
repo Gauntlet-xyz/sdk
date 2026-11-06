@@ -430,15 +430,33 @@ export const aeraAdapter: EvmProtocolAdapter = {
         throw new InvalidWithdrawParamsError();
       }
 
-      const tokenOutBeforeTip = await getAsyncRedeemTokenOut(
-        publicClient,
-        runtime,
-        vault.vaultAddress,
-        asset.address,
-        shares
-      );
-      minTokenOut = applySlippageDown(subtractSolverTip(tokenOutBeforeTip, solverTip), slippageBps);
+      const tokensOut =
+        'amount' in params && params.amount != null
+          ? params.amount
+          : subtractSolverTip(
+              await getAsyncRedeemTokenOut(
+                publicClient,
+                runtime,
+                vault.vaultAddress,
+                asset.address,
+                shares
+              ),
+              solverTip
+            );
+      minTokenOut = applySlippageDown(tokensOut, slippageBps);
       maxUnitsIn = shares;
+    }
+
+    if (params.maxShares !== undefined) {
+      if (
+        isAsync ||
+        typeof params.maxShares !== 'bigint' ||
+        params.maxShares <= 0n ||
+        (!isV2ExactTokenWithdraw && shares !== undefined && shares > params.maxShares)
+      ) {
+        throw new InvalidWithdrawParamsError();
+      }
+      if (maxUnitsIn > params.maxShares) maxUnitsIn = params.maxShares;
     }
 
     const steps: EvmTxStep[] = [];

@@ -17,6 +17,7 @@ export function decimalToBigInt(value: string, decimals: number): bigint {
   if (!Number.isInteger(decimals) || decimals < 0) {
     throw new InvalidDecimalError(`decimals=${decimals}`);
   }
+  if (typeof value !== 'string') throw new InvalidDecimalError(String(value));
   const match = DECIMAL_RE.exec(value);
   if (!match) throw new InvalidDecimalError(value);
 

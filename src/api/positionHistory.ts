@@ -1,3 +1,4 @@
+import { activityLifecycles, orderActivityRows, requireSameToken } from './activityRows';
 import { GauntletSDKError } from '../errors';
 import type { GauntletApi, TokenRef, UserActivity } from './client';
 import { bigIntToDecimal, decimalToBigInt, sharesToBigInt } from './decimal';
@@ -57,8 +58,11 @@ export function buildPositionHistory(rows: UserActivity[]): PositionHistory {
     );
   }
 
-  const ordered = [...rows].sort((a, b) => a.block_timestamp - b.block_timestamp);
-  const token = ordered.find((r) => r.assets_delta.token)?.assets_delta.token ?? null;
+  const ordered = orderActivityRows(rows);
+  activityLifecycles(ordered);
+  const tokenRow = ordered.find((r) => r.assets_delta.token) ?? ordered[0];
+  const token = tokenRow.assets_delta.token ?? null;
+  for (const row of ordered) requireSameToken(tokenRow, row);
 
   let sharesBalance = 0n;
   let pendingDepositAssets = 0n;
@@ -95,9 +99,14 @@ export function buildPositionHistory(rows: UserActivity[]): PositionHistory {
         if (row.request_hash != null) pendingDepositByHash.set(row.request_hash, assetsDelta);
         break;
       case 'deposit_refunded':
-        // Row carries the unwound request as a negative delta.
+        if (
+          row.request_hash == null ||
+          pendingDepositByHash.get(row.request_hash) !== -assetsDelta
+        ) {
+          throw new GauntletSDKError('The deposit refund does not match its escrow');
+        }
         pendingDepositAssets += assetsDelta;
-        if (row.request_hash != null) pendingDepositByHash.delete(row.request_hash);
+        pendingDepositByHash.delete(row.request_hash);
         break;
       case 'withdraw':
         // Sync withdraws and async terminal solves both carry the asset
@@ -121,8 +130,11 @@ export function buildPositionHistory(rows: UserActivity[]): PositionHistory {
         break;
       }
       case 'withdraw_refunded':
+        if (row.request_hash == null || pendingRedeemByHash.get(row.request_hash) !== sharesDelta) {
+          throw new GauntletSDKError('The withdrawal refund does not match its escrow');
+        }
         pendingRedeemShares -= sharesDelta;
-        if (row.request_hash != null) pendingRedeemByHash.delete(row.request_hash);
+        pendingRedeemByHash.delete(row.request_hash);
         break;
       case 'transfer_in':
       case 'transfer_out':
@@ -131,6 +143,9 @@ export function buildPositionHistory(rows: UserActivity[]): PositionHistory {
         throw new GauntletSDKError(`Unknown activity row type "${row.type}"`);
     }
 
+    if (sharesBalance < 0n || pendingDepositAssets < 0n || pendingRedeemShares < 0n) {
+      throw new GauntletSDKError('The activity history produces a negative position balance');
+    }
     points.push({
       timestamp: new Date(row.block_timestamp * 1000),
       txHash: row.tx_hash,

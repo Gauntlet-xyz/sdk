@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { stitchActivityFlows } from '../../src/api/activity';
+import { requireSameToken } from '../../src/api/activityRows';
 import type { TokenRef, UserActivity } from '../../src/api/client';
 import { GauntletSDKError } from '../../src/errors';
 
@@ -20,6 +21,28 @@ function row(overrides: Partial<UserActivity> & Pick<UserActivity, 'type'>): Use
     ...overrides,
   };
 }
+
+describe('requireSameToken', () => {
+  it('checks the chain even when token metadata matches or is absent', () => {
+    for (const token of [USDC, null]) {
+      const left = row({ type: 'deposit', assets_delta: { native: '0', token } });
+      const right = { ...left, vault_id: VAULT.replace('8453:', '1:') };
+      expect(() => requireSameToken(left, right)).toThrow('different chains');
+    }
+  });
+
+  it('keeps address and decimals checks within the same chain', () => {
+    const left = row({ type: 'deposit' });
+    const right = { ...left, vault_id: '8453:0x0000000000000000000000000000000000000002' };
+    expect(() => requireSameToken(left, right)).not.toThrow();
+    for (const token of [{ ...USDC, address: '0xother' }, { ...USDC, decimals: 18 }]) {
+      expect(() => requireSameToken(left, {
+        ...right,
+        assets_delta: { native: '0', token },
+      })).toThrow('different asset denominations');
+    }
+  });
+});
 
 describe('stitchActivityFlows', () => {
   it('treats a sync deposit as a single settled flow', () => {
@@ -163,4 +186,25 @@ describe('stitchActivityFlows', () => {
     expect(flow.assets.decimal).toBe('3.5');
     expect(flow.assets.raw).toBeNull();
   });
+  it('separates reused request hashes by vault and request occurrence', () => {
+    const pending = row({ type: 'deposit_pending', request_hash: 'same', assets_delta: { native: '10', token: USDC } });
+    const settled = row({ type: 'deposit', request_hash: 'same', shares_delta: '9' });
+    const retry = row({ type: 'deposit_pending', request_hash: 'same', assets_delta: { native: '10', token: USDC } });
+    const otherVault = { ...retry, vault_id: '1:0x0000000000000000000000000000000000000002' };
+    const flows = stitchActivityFlows([otherVault, retry, settled, pending]);
+    expect(flows).toHaveLength(3);
+    expect(flows.filter((flow) => flow.status === 'pending')).toHaveLength(2);
+    expect(flows.find((flow) => flow.status === 'settled')?.txHashes).toEqual([pending.tx_hash, settled.tx_hash]);
+    expect(flows.find((flow) => flow.txHashes.includes(retry.tx_hash) && flow.vaultId === VAULT)?.status).toBe('pending');
+  });
+
+  it('rejects duplicate requests, conflicting terminals, and incorrect refunds', () => {
+    const pending = row({ type: 'deposit_pending', request_hash: 'same', assets_delta: { native: '10', token: USDC } });
+    const settled = row({ type: 'deposit', request_hash: 'same', shares_delta: '9' });
+    const wrongRefund = row({ type: 'deposit_refunded', request_hash: 'same', assets_delta: { native: '-20', token: USDC } });
+    for (const rows of [[pending, pending], [pending, settled, wrongRefund], [pending, wrongRefund]]) {
+      expect(() => stitchActivityFlows(rows)).toThrow(GauntletSDKError);
+    }
+  });
+
 });

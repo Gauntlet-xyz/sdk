@@ -125,6 +125,22 @@ describe('buildPositionHistory', () => {
   });
 });
 
+describe('position history integrity', () => {
+  it('rejects invalid signs, unmatched escrow, and mixed asset denominations', () => {
+    const deposit = row({ type: 'deposit', shares_delta: '100', assets_delta: { native: '100', token: USDC } });
+    const pending = row({ type: 'withdraw_pending', request_hash: 'refund', shares_delta: '-40' });
+    const refund = row({ type: 'withdraw_refunded', request_hash: 'refund', shares_delta: '80' });
+    const otherToken = { ...USDC, address: '0x0000000000000000000000000000000000000002' };
+    const malformed = [
+      [deposit, pending, refund],
+      [deposit, row({ type: 'transfer_out', shares_delta: '10' })],
+      [deposit, row({ type: 'withdraw', shares_delta: '-110' })],
+      [deposit, row({ type: 'deposit', shares_delta: '1', assets_delta: { native: '1', token: otherToken } })],
+    ];
+    for (const rows of malformed) expect(() => buildPositionHistory(rows)).toThrow(GauntletSDKError);
+  });
+});
+
 describe('getPositionHistory', () => {
   it('returns an empty timeline for a wallet with no activity in the vault', async () => {
     const api = new GauntletApi({

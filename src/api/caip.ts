@@ -16,7 +16,9 @@ export interface ApiVaultId {
 export function parseApiVaultId(id: string): ApiVaultId {
   const match = /^(?:eip155:)?(\d+):(0x[0-9a-fA-F]{40})$/.exec(id);
   if (!match) throw new InvalidCaipIdError(id);
-  return { chainId: Number(match[1]), address: match[2].toLowerCase() };
+  const chainId = Number(match[1]);
+  if (!Number.isSafeInteger(chainId) || chainId <= 0) throw new InvalidCaipIdError(id);
+  return { chainId, address: match[2].toLowerCase() };
 }
 
 export function formatApiVaultId(chainId: number, address: string): string {

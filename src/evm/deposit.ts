@@ -78,6 +78,7 @@ export async function getDepositTx(
   client: GauntletClient,
   params: EvmDepositParams
 ): Promise<PreparedTx[]> {
+  params = structuredClone(params);
   const slippageBps = params.slippageBps ?? DEFAULT_BPS;
   if (!Number.isInteger(slippageBps) || slippageBps < 0 || slippageBps > Number(MAX_BPS)) {
     throw new InvalidSlippageBPSError(slippageBps);
@@ -208,5 +209,5 @@ export async function getDepositTx(
   });
   steps.push(...depositSteps);
 
-  return Promise.all(steps.map((step) => encodeTransactionWithAttribution(client, step)));
+  return Promise.all(steps.map((step) => encodeTransactionWithAttribution(client, step, chainId)));
 }

@@ -25,7 +25,7 @@ describe('parseApiVaultId', () => {
   });
 
   it('rejects malformed ids', () => {
-    for (const bad of ['', '8453', '0xee8f4ec5672f09119b96ab6fb59c27e1b7e44b61', '8453:0x123', 'base:0xee8f4ec5672f09119b96ab6fb59c27e1b7e44b61']) {
+    for (const bad of ['0:0x0000000000000000000000000000000000000001', '9007199254740993:0x0000000000000000000000000000000000000001', '', '8453', '0xee8f4ec5672f09119b96ab6fb59c27e1b7e44b61', '8453:0x123', 'base:0xee8f4ec5672f09119b96ab6fb59c27e1b7e44b61']) {
       expect(() => parseApiVaultId(bad), bad).toThrow(InvalidCaipIdError);
     }
   });

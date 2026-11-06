@@ -155,22 +155,20 @@ function v2TestManifest(): VaultManifest {
 function publicClientWithContractVersion({
   version,
   error,
-  onVersionRead,
 }: {
   version?: string;
   error?: Error;
-  onVersionRead?: () => void;
 } = {}): PublicClient {
   return {
     readContract: async ({ functionName }: { functionName: string }) => {
       if (functionName !== 'version') throw new Error(`Unexpected read: ${functionName}`);
-      onVersionRead?.();
       if (error) throw error;
       if (version === undefined) {
         throw versionExecutionError(new ContractFunctionZeroDataError({ functionName: 'version' }));
       }
       return version;
     },
+    getCode: async () => '0x6000',
   } as unknown as PublicClient;
 }
 
@@ -409,42 +407,6 @@ function syncWithdrawQuoteBounds({
 }
 
 describe('aera', () => {
-  test('detects runtime V2 provisioner version and caches result', async () => {
-    let versionReads = 0;
-    const v2Client = publicClientWithContractVersion({
-      version: '2.0',
-      onVersionRead: () => versionReads++,
-    });
-    const provisionerAddress = '0x0000000000000000000000000000000000000012';
-
-    await expect(resolveContractVersion(v2Client, provisionerAddress)).resolves.toBe(
-      ContractVersion.V2
-    );
-    await expect(resolveContractVersion(v2Client, provisionerAddress)).resolves.toBe(
-      ContractVersion.V2
-    );
-
-    expect(versionReads).toBe(1);
-  });
-
-  test('detects runtime V1 provisioner version and caches result', async () => {
-    let versionReads = 0;
-    const v1Client = publicClientWithContractVersion({
-      version: '1.0',
-      onVersionRead: () => versionReads++,
-    });
-    const provisionerAddress = '0x0000000000000000000000000000000000000011';
-
-    await expect(resolveContractVersion(v1Client, provisionerAddress)).resolves.toBe(
-      ContractVersion.V1
-    );
-    await expect(resolveContractVersion(v1Client, provisionerAddress)).resolves.toBe(
-      ContractVersion.V1
-    );
-
-    expect(versionReads).toBe(1);
-  });
-
   test('defaults to legacy V1 when provisioner version method is unavailable', async () => {
     await expect(
       resolveContractVersion(
@@ -1807,6 +1769,9 @@ describe('aera', () => {
         entireAmount: true,
       } as unknown as EvmWithdrawParams)
     ).rejects.toBeInstanceOf(InvalidWithdrawParamsError);
+    await expect(
+      getWithdrawTx(client, { vaultId: VAULT_ID, shares: 100n, entireAmount: 1 } as unknown as EvmWithdrawParams)
+    ).rejects.toBeInstanceOf(InvalidWithdrawParamsError);
   });
 
   test('rejects sync quote and transaction builds that would submit zero bounds', async () => {
@@ -2049,6 +2014,57 @@ describe('aera', () => {
     expect(redeemByAmount.tx.args[2]).toBe(750n);
     expect(redeemByAmount.tx.args[3]).toBe(50n);
   });
+
+  test('keeps the requested async token minimum when a price update arrives during construction', async () => {
+    await withAnvil(base, FORK_BLOCK, async ({ testClient, anvil }) => {
+      const publicClient = createPublicClient({ chain: base, transport: http(`http://127.0.0.1:${anvil.port}`) });
+      const vault = getMultiDepositorVault(publicClient, AERA_VAULT_ADDRESS);
+      const owner = await vault.read.owner();
+      const calculator = await vault.read.feeCalculator();
+      const feeCalculator = getPriceAndFeeCalculator(publicClient, calculator);
+      const accountant = await feeCalculator.read.vaultAccountant([AERA_VAULT_ADDRESS]);
+      const [state] = await feeCalculator.read.getVaultState([AERA_VAULT_ADDRESS]);
+      await testClient.impersonateAccount({ address: owner });
+      await testClient.setBalance({ address: owner, value: parseEther('10') });
+      await simulateAndWriteContractAndWait(testClient, setThresholdsTxRequest(
+        calculator, AERA_VAULT_ADDRESS, 9_000, 11_000, 1, 255, 30, owner
+      ));
+      await testClient.impersonateAccount({ address: accountant });
+      await testClient.setBalance({ address: accountant, value: parseEther('10') });
+      await testClient.increaseTime({ seconds: 61 });
+      await testClient.mine({ blocks: 1 });
+      let updated = false;
+      const changingClient = publicClient.extend(() => ({
+        readContract: async (parameters: Parameters<typeof publicClient.readContract>[0]) => {
+          const result = await publicClient.readContract(parameters);
+          if (parameters.functionName === 'convertTokenToUnitsIfActive' && !updated) {
+            updated = true;
+            const block = await testClient.getBlock();
+            await simulateAndWriteContractAndWait(testClient, setUnitPriceTxRequest(
+              calculator, AERA_VAULT_ADDRESS, state.unitPrice * 999n / 1000n,
+              Number(block.timestamp), accountant
+            ));
+          }
+          return result;
+        },
+      })) as PublicClient;
+      const account = privateKeyToAccount(TEST_PRIVATE_KEY);
+      const client = new GauntletClient({
+        evmClients: { [base.id]: changingClient },
+        wallet: createWalletClient({ account, chain: base, transport: http(`http://127.0.0.1:${anvil.port}`) }),
+      });
+      const steps = await getWithdrawTx(client, {
+        vaultId: VAULT_ID, amount: 1_000_000n, depositMode: 'async', slippageBps: 0,
+      });
+      expect(updated).toBe(true);
+      const request = steps.at(-1)!;
+      expect(request.tx.args[2]).toBe(1_000_000n);
+      expect(request.payload.chainId).toBe(base.id);
+      expect(steps.every((step) => step.tx.chainId === base.id)).toBe(true);
+      const [newState] = await feeCalculator.read.getVaultState([AERA_VAULT_ADDRESS]);
+      expect(newState.unitPrice).toBeLessThan(state.unitPrice);
+    });
+  }, 60_000);
 
   test('can do an async deposit and redeem', async () => {
     await withAnvil(base, FORK_BLOCK, async ({ testClient, anvil }) => {
@@ -2819,6 +2835,16 @@ describe('aera V2 sync fork', () => {
       expect(withdrawQuote.kind).toBe('withdraw');
       expect(withdrawQuote.tokensOut).toBe(WITHDRAW_AMOUNT);
       expect(withdrawQuote.capacity.exceedsCapacity).toBe(false);
+
+      const [capped] = await getWithdrawTx(client, {
+        vaultId: V2_VAULT_ID, amount: WITHDRAW_AMOUNT,
+        syncWithdrawQuote: withdrawQuote, maxShares: 1n,
+      });
+      expect(capped.tx.args[2]).toBe(1n);
+      await expect(publicClient.simulateContract({
+        address: capped.tx.address, abi: capped.tx.abi,
+        functionName: capped.tx.functionName, args: capped.tx.args, account: account.address,
+      })).rejects.toThrow();
 
       // Sync withdraw by exact token needs no vault-unit approval
       const withdrawSteps = await getWithdrawTx(client, {

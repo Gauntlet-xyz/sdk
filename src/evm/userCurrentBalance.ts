@@ -1,13 +1,28 @@
 import { parseAbi, type Address } from 'viem';
 import type { GauntletClient } from '../client';
 import type { EvmVaultDeployment } from './types';
-import { ChainMismatchError, UnsupportedProtocolError, VaultNotFoundError } from '../errors';
+import {
+  ChainMismatchError,
+  GauntletSDKError,
+  UnsupportedAssetError,
+  UnsupportedProtocolError,
+  VaultNotFoundError,
+} from '../errors';
 import { getMultiDepositorVault, resolveAeraRuntimeContracts } from './aeraContracts';
 import { convertUnitsToToken } from './aeraContracts/priceAndFeeCalculator';
 import { getUserUnitsRefundableUntil } from './aeraContracts/v2';
 import { provisionerV2Abi } from './abis/provisionerV2';
 import { ContractVersion } from './types';
-import { BLOCKS_3_DAYS, CHAIN_NAMES, DEFAULT_BLOCKS_3_DAYS, LOG_PAGE_SIZE } from '../constants';
+import {
+  BLOCKS_3_DAYS,
+  CHAIN_NAMES,
+  DAY,
+  DEFAULT_BLOCKS_3_DAYS,
+  LOG_PAGE_SIZE,
+} from '../constants';
+
+// Log chunks fetched at once per event type.
+const LOG_CHUNK_CONCURRENCY = 16;
 
 // Inline as-const ABI items give viem full type inference for args and return types.
 const DEPOSIT_REQUESTED_V1_ABI = [
@@ -55,9 +70,20 @@ export interface UserCurrentBalanceParams {
   vaultId: string;
   address: Address;
   chainId?: number;
+  /** Required for deployments that support multiple assets, ignored otherwise. */
+  assetSymbol?: string;
+  /**
+   * Scan from this block, including expired requests that still hold escrow.
+   * Requires `chainId` for a vault with more than one deployment.
+   */
+  fromBlock?: bigint;
 }
 
 export interface UserCurrentBalance {
+  /** Block used for balances, conversions, and request state. */
+  blockNumber: bigint;
+  /** First block included in the request scan. Older escrow is outside this result. */
+  fromBlock: bigint;
   /** Chain identifier, e.g. "base" */
   chain: string;
   /** EVM chain id of the deployment, e.g. 8453 */
@@ -91,23 +117,77 @@ function dedupeByRequestHash<TLog extends { args: { [key: string]: unknown } }>(
   });
 }
 
+/** Step back by the expected block count, and widen until the block predates the cutoff. */
+async function requestScanStart(
+  publicClient: ReturnType<GauntletClient['getPublicClient']>,
+  chainId: number,
+  blockNumber: bigint,
+  days: number,
+  cutoff: bigint
+): Promise<bigint> {
+  let span = ((BLOCKS_3_DAYS[chainId] ?? DEFAULT_BLOCKS_3_DAYS) * BigInt(days)) / 3n;
+  for (;;) {
+    if (span >= blockNumber) return 0n;
+    const start = blockNumber - span;
+    const block = await publicClient.getBlock({ blockNumber: start });
+    if (block.timestamp <= cutoff) return start;
+    span *= 2n;
+  }
+}
+
+async function mapInBatches<T, P extends Promise<unknown>>(
+  items: T[],
+  size: number,
+  fn: (item: T) => P
+): Promise<Awaited<P>[]> {
+  const results: Awaited<P>[] = [];
+  for (let i = 0; i < items.length; i += size) {
+    results.push(...(await Promise.all(items.slice(i, i + size).map(fn))));
+  }
+  return results;
+}
+
 async function queryDeploymentBalance(
   client: GauntletClient,
   deployment: EvmVaultDeployment,
-  address: Address
+  params: UserCurrentBalanceParams
 ): Promise<UserCurrentBalance> {
   const publicClient = client.getPublicClient(deployment.chainId);
-  const token = deployment.supplyToken[0];
+  const { address } = params;
+  const token =
+    deployment.supplyToken.length > 1
+      ? deployment.supplyToken.find((candidate) => candidate.symbol === params.assetSymbol)
+      : deployment.supplyToken[0];
+  if (token === undefined)
+    throw new UnsupportedAssetError(params.assetSymbol ?? 'unknown', params.vaultId);
+  const snapshot = await publicClient.getBlock({ blockTag: 'latest' });
+  if (snapshot.number === null) {
+    throw new GauntletSDKError('The balance snapshot has no block number');
+  }
+  const blockNumber = snapshot.number;
+  const readOptions = { blockNumber };
+  const expirationDays = deployment.expirationDays ?? 3;
+  if (!Number.isSafeInteger(expirationDays) || expirationDays <= 0) {
+    throw new GauntletSDKError('The request expiration must be a positive integer number of days');
+  }
+  const scanDays = Math.max(3, expirationDays);
+  const cutoff = snapshot.timestamp - BigInt(DAY) * BigInt(scanDays);
+  const fromBlock =
+    params.fromBlock ??
+    (await requestScanStart(publicClient, deployment.chainId, blockNumber, scanDays, cutoff));
+  if (fromBlock < 0n || fromBlock > blockNumber) {
+    throw new GauntletSDKError('The request scan range is invalid');
+  }
 
   const vaultContract = getMultiDepositorVault(publicClient, deployment.vaultAddress);
   const [runtime, units] = await Promise.all([
-    resolveAeraRuntimeContracts(publicClient, deployment),
-    vaultContract.read.balanceOf([address]),
+    resolveAeraRuntimeContracts(publicClient, deployment, readOptions),
+    vaultContract.read.balanceOf([address], readOptions),
   ]);
   const provisionerAddress = runtime.provisioner.address;
   const isV2 = runtime.provisioner.version === ContractVersion.V2;
   const unitsLockedUntilPromise = isV2
-    ? getUserUnitsRefundableUntil(publicClient, provisionerAddress, address)
+    ? getUserUnitsRefundableUntil(publicClient, provisionerAddress, address, readOptions)
     : Promise.resolve(undefined);
 
   const balance = await convertUnitsToToken(
@@ -116,63 +196,56 @@ async function queryDeploymentBalance(
     runtime.feeCalculator.version,
     deployment.vaultAddress,
     token.address,
-    units
+    units,
+    readOptions
   );
 
-  // Look back ~3 days for pending async requests
-  const currentBlock = await publicClient.getBlockNumber();
-  const lookback = BLOCKS_3_DAYS[deployment.chainId] ?? DEFAULT_BLOCKS_3_DAYS;
-  const fromBlock = currentBlock > lookback ? currentBlock - lookback : 0n;
-
-  // Compute block-range chunks to stay within the 10,000-block RPC limit, then fetch in parallel
+  // Compute block-range chunks to stay within the 10,000-block RPC limit, then fetch in bounded batches
   const chunks: [bigint, bigint][] = [];
-  for (let cursor = fromBlock; cursor <= currentBlock; cursor += LOG_PAGE_SIZE + 1n) {
-    const end = cursor + LOG_PAGE_SIZE <= currentBlock ? cursor + LOG_PAGE_SIZE : currentBlock;
+  for (let cursor = fromBlock; cursor <= blockNumber; cursor += LOG_PAGE_SIZE + 1n) {
+    const end = cursor + LOG_PAGE_SIZE <= blockNumber ? cursor + LOG_PAGE_SIZE : blockNumber;
     chunks.push([cursor, end]);
   }
 
+  // Each map keeps LOG_CHUNK_CONCURRENCY queries in flight.
   const [depositPages, redeemPages] = await Promise.all([
-    Promise.all(
-      chunks.map(([from, to]) =>
-        isV2
-          ? publicClient.getContractEvents({
-              address: provisionerAddress,
-              abi: provisionerV2Abi,
-              eventName: 'DepositRequested',
-              args: { receiver: address },
-              fromBlock: from,
-              toBlock: to,
-            })
-          : publicClient.getContractEvents({
-              address: provisionerAddress,
-              abi: DEPOSIT_REQUESTED_V1_ABI,
-              eventName: 'DepositRequested',
-              args: { user: address },
-              fromBlock: from,
-              toBlock: to,
-            })
-      )
+    mapInBatches(chunks, LOG_CHUNK_CONCURRENCY, ([from, to]) =>
+      isV2
+        ? publicClient.getContractEvents({
+            address: provisionerAddress,
+            abi: provisionerV2Abi,
+            eventName: 'DepositRequested',
+            args: { receiver: address, token: token.address },
+            fromBlock: from,
+            toBlock: to,
+          })
+        : publicClient.getContractEvents({
+            address: provisionerAddress,
+            abi: DEPOSIT_REQUESTED_V1_ABI,
+            eventName: 'DepositRequested',
+            args: { user: address, token: token.address },
+            fromBlock: from,
+            toBlock: to,
+          })
     ),
-    Promise.all(
-      chunks.map(([from, to]) =>
-        isV2
-          ? publicClient.getContractEvents({
-              address: provisionerAddress,
-              abi: provisionerV2Abi,
-              eventName: 'RedeemRequested',
-              args: { user: address },
-              fromBlock: from,
-              toBlock: to,
-            })
-          : publicClient.getContractEvents({
-              address: provisionerAddress,
-              abi: REDEEM_REQUESTED_V1_ABI,
-              eventName: 'RedeemRequested',
-              args: { user: address },
-              fromBlock: from,
-              toBlock: to,
-            })
-      )
+    mapInBatches(chunks, LOG_CHUNK_CONCURRENCY, ([from, to]) =>
+      isV2
+        ? publicClient.getContractEvents({
+            address: provisionerAddress,
+            abi: provisionerV2Abi,
+            eventName: 'RedeemRequested',
+            args: { user: address, token: token.address },
+            fromBlock: from,
+            toBlock: to,
+          })
+        : publicClient.getContractEvents({
+            address: provisionerAddress,
+            abi: REDEEM_REQUESTED_V1_ABI,
+            eventName: 'RedeemRequested',
+            args: { user: address, token: token.address },
+            fromBlock: from,
+            toBlock: to,
+          })
     ),
   ]);
 
@@ -196,6 +269,7 @@ async function queryDeploymentBalance(
       })),
     ],
     allowFailure: false,
+    blockNumber,
   });
 
   const depositChecks = pendingChecks.slice(0, depositLogs.length);
@@ -223,12 +297,15 @@ async function queryDeploymentBalance(
           runtime.feeCalculator.version,
           deployment.vaultAddress,
           token.address,
-          pendingWithdrawUnits
+          pendingWithdrawUnits,
+          readOptions
         )
       : 0n;
   const unitsLockedUntil = await unitsLockedUntilPromise;
 
   return {
+    blockNumber,
+    fromBlock,
     chain: CHAIN_NAMES[deployment.chainId] ?? `chain-${deployment.chainId}`,
     chainId: deployment.chainId,
     token: token.address,
@@ -249,7 +326,9 @@ async function queryDeploymentBalance(
  * - `pendingWithdraw` — vault units locked in a pending async redeem request (converted to tokens).
  *
  * Only supported for Aera multi-depositor vaults. Pending amounts are detected by scanning
- * the last ~3 days of provisioner events and cross-checking hash existence on-chain.
+ * the configured request lifetime, with a minimum of three days. Set `fromBlock` (with `chainId`
+ * on a multi-chain vault) for older escrow.
+ * All state reads use one block. The returned range identifies the scanned history.
  *
  * @param client - A configured `GauntletClient` instance with an EVM public client for each
  *   chain the vault is deployed on.
@@ -260,6 +339,7 @@ async function queryDeploymentBalance(
  * @throws {VaultNotFoundError} If the vault ID is not found in the manifest.
  * @throws {UnsupportedProtocolError} If the vault is not an Aera multi-depositor vault.
  * @throws {ChainMismatchError} If `chainId` is specified but no deployment exists for that chain.
+ * @throws {UnsupportedAssetError} If a multi-asset deployment gets no matching `assetSymbol`.
  *
  * @example
  * ```ts
@@ -274,6 +354,7 @@ export async function getUserCurrentBalance(
   client: GauntletClient,
   params: UserCurrentBalanceParams
 ): Promise<UserCurrentBalance[]> {
+  params = { ...params };
   const manifest = await client.manifest;
   const vaultInfo = manifest.vaults.find((v) => v.vaultId === params.vaultId);
   if (!vaultInfo) throw new VaultNotFoundError(params.vaultId);
@@ -294,8 +375,11 @@ export async function getUserCurrentBalance(
         evmDeployments.map((d) => `${d.chainId}`).join(', ')
       );
     }
-    return [await queryDeploymentBalance(client, deployment, params.address)];
+    return [await queryDeploymentBalance(client, deployment, params)];
+  }
+  if (params.fromBlock !== undefined && evmDeployments.length > 1) {
+    throw new GauntletSDKError('fromBlock requires chainId for a vault with several deployments');
   }
 
-  return Promise.all(evmDeployments.map((d) => queryDeploymentBalance(client, d, params.address)));
+  return Promise.all(evmDeployments.map((d) => queryDeploymentBalance(client, d, params)));
 }

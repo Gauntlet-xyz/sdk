@@ -25,6 +25,7 @@ export async function getDepositReceiverApprovalTx(
   client: GauntletClient,
   params: EvmDepositReceiverApprovalParams
 ): Promise<PreparedTx> {
+  params = { ...params };
   const resolved = await resolveVault(client, params.vaultId, params.chainId);
   if (!resolved) throw new VaultNotFoundError(params.vaultId);
 
@@ -39,13 +40,17 @@ export async function getDepositReceiverApprovalTx(
     throw new UnsupportedFeatureError('Aera: deposit receiver approval on V1');
   }
 
-  return encodeTransactionWithAttribution(client, {
-    type: 'setDepositReceiverApproval',
-    ...provisionerV2.setDepositReceiverApprovalTxRequest(
-      runtime.provisioner.address,
-      params.depositor,
-      params.approved ?? true,
-      receiver
-    ),
-  });
+  return encodeTransactionWithAttribution(
+    client,
+    {
+      type: 'setDepositReceiverApproval',
+      ...provisionerV2.setDepositReceiverApprovalTxRequest(
+        runtime.provisioner.address,
+        params.depositor,
+        params.approved ?? true,
+        receiver
+      ),
+    },
+    chainId
+  );
 }

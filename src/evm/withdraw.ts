@@ -9,6 +9,7 @@ import {
   AccountRequiredError,
   VaultNotFoundError,
   UnsupportedAssetError,
+  UnsupportedFeatureError,
   InvalidSlippageBPSError,
   InvalidWithdrawParamsError,
 } from '../errors';
@@ -49,6 +50,8 @@ export type EvmWithdrawParams = {
    * Supplying bounds implies `depositMode: 'sync'`; explicit async requests are rejected.
    */
   syncWithdrawQuote?: SyncWithdrawQuoteBounds;
+  /** Limit a sync withdrawal to the shares reviewed before a rate change. */
+  maxShares?: bigint;
 } & (
   | { shares: bigint; amount?: never; entireAmount?: never }
   | { amount: bigint; shares?: never; entireAmount?: never }
@@ -56,6 +59,15 @@ export type EvmWithdrawParams = {
 );
 
 function validateWithdrawParams(params: EvmWithdrawParams) {
+  if (params.entireAmount !== undefined && typeof params.entireAmount !== 'boolean') {
+    throw new InvalidWithdrawParamsError();
+  }
+  if (
+    (params.amount !== undefined && params.amount < 0n) ||
+    (params.shares !== undefined && params.shares < 0n)
+  ) {
+    throw new InvalidWithdrawParamsError();
+  }
   const modes = [
     'amount' in params && params.amount != null,
     'shares' in params && params.shares != null,
@@ -171,6 +183,7 @@ export async function getWithdrawTx(
   client: GauntletClient,
   params: EvmWithdrawParams
 ): Promise<PreparedTx[]> {
+  params = structuredClone(params);
   validateWithdrawParams(params);
 
   if (
@@ -196,6 +209,9 @@ export async function getWithdrawTx(
   }
 
   const { vault, protocol } = resolved;
+  if (params.maxShares !== undefined && protocol !== 'aera') {
+    throw new UnsupportedFeatureError('maxShares requires an Aera sync withdrawal');
+  }
 
   const token =
     vault.supplyToken.length > 1
@@ -267,6 +283,7 @@ export async function getWithdrawTx(
     maxPriceAge: params.maxPriceAge,
     aeraRuntime,
     syncWithdrawQuote: params.syncWithdrawQuote,
+    maxShares: params.maxShares,
     ...('shares' in params && params.shares != null ? { shares: params.shares } : {}),
     ...('amount' in params && params.amount != null ? { amount: params.amount } : {}),
     ...('entireAmount' in params && params.entireAmount ? { entireAmount: true as const } : {}),
@@ -274,5 +291,7 @@ export async function getWithdrawTx(
 
   const steps = await adapter.buildWithdraw(withdrawParams as AdapterWithdrawParams);
 
-  return await Promise.all(steps.map((step) => encodeTransactionWithAttribution(client, step)));
+  return await Promise.all(
+    steps.map((step) => encodeTransactionWithAttribution(client, step, chainId))
+  );
 }
